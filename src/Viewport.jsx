@@ -4,6 +4,7 @@ import { ContactShadows, Grid, OrbitControls, TransformControls, useGLTF } from 
 import * as THREE from 'three'
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { poseForObject, presetDefinition } from './rig.js'
+import { MinimalPersonModel } from './MinimalPersonModel.jsx'
 
 const CAMERA_ID = '__shot_camera__'
 const BUILT_IN_MODEL_URL = `${import.meta.env.BASE_URL}models/xbot-animated.glb`
@@ -1030,30 +1031,34 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
       onPointerCancel={preview ? undefined : endObjectInteraction}
     >
       {data.type === 'person' ? (
-        <StudioPerson
-          bodyType={data.bodyType}
-          pose={data.pose}
-          poseTime={data.poseTime}
-          continuousMotion={data.continuousMotion}
-          animationTime={stateAnimationTime}
-          rigRoot={data.rigRoot}
-          joints={data.joints}
-          footLock={data.footLock}
-          color={data.color}
-          selected={selected}
-          selectedJoint={activeJoint}
-          showBoneGizmo={!preview && transformMode === 'select'}
-          onSelectJoint={jointId => onJointSelect?.(data.id, jointId)}
-          onRotateJoint={(jointId, rotation) => onUpdate(data.id, {
-            joints: { ...(data.joints || {}), [jointId]: rotation },
-          })}
-          onRotateJoints={rotations => onUpdate(data.id, {
-            joints: { ...(data.joints || {}), ...rotations },
-          })}
-          onSurfacePointerDown={beginObjectInteraction}
-          onSurfacePointerMove={rotateObjectFromSurface}
-          onSurfacePointerUp={endObjectInteraction}
-        />
+        data.bodyType === 'minimal' ? (
+          <MinimalPersonModel color={data.color} faceText={data.faceText} selected={selected} />
+        ) : (
+          <StudioPerson
+            bodyType={data.bodyType}
+            pose={data.pose}
+            poseTime={data.poseTime}
+            continuousMotion={data.continuousMotion}
+            animationTime={stateAnimationTime}
+            rigRoot={data.rigRoot}
+            joints={data.joints}
+            footLock={data.footLock}
+            color={data.color}
+            selected={selected}
+            selectedJoint={activeJoint}
+            showBoneGizmo={!preview && transformMode === 'select'}
+            onSelectJoint={jointId => onJointSelect?.(data.id, jointId)}
+            onRotateJoint={(jointId, rotation) => onUpdate(data.id, {
+              joints: { ...(data.joints || {}), [jointId]: rotation },
+            })}
+            onRotateJoints={rotations => onUpdate(data.id, {
+              joints: { ...(data.joints || {}), ...rotations },
+            })}
+            onSurfacePointerDown={beginObjectInteraction}
+            onSurfacePointerMove={rotateObjectFromSurface}
+            onSurfacePointerUp={endObjectInteraction}
+          />
+        )
       ) : data.type === 'depthMesh' && data.depthMapUrl ? (
         <DepthMeshModel url={data.depthMapUrl} settings={data.depthSettings} color={data.color} selected={selected} />
       ) : data.type === 'model' && data.url ? (

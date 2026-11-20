@@ -3,7 +3,7 @@ import {
   ArrowDownToLine, Axis3D, Box, BoxSelect, Camera, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDot, Copy, Download,
   FileImage, FileVideo2, Focus, FolderOpen, Grid3X3, Import, Link2, Lock, MousePointer2, Move3D, Pause, Play, Plus,
   Magnet, Maximize2, Minimize2, Minus, Redo2, RotateCcw, RotateCw, Save, Settings2, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Sun,
-  ScanLine, Trash2, Undo2, Unlink2, UserRound, Video, ZoomIn,
+  ScanFace, ScanLine, Trash2, Undo2, Unlink2, UserRound, Video, ZoomIn,
   Unlock,
 } from 'lucide-react'
 import { MainViewport, CameraPreview } from './Viewport.jsx'
@@ -13,6 +13,7 @@ import { CAMERA_SHOT_PRESETS, shotPreset, solveFollowCamera } from './cameraMoti
 import { ShotsPanel } from './ShotsPanel.jsx'
 import { mergeRouteKeyframes, removeRouteOwnedKeyframes, routeOwnedKeyframe } from './routeOwnership.js'
 import { JOINT_DEFINITIONS, JOINT_GROUPS, RIG_PRESET_GROUPS, RIG_PRESET_OPTIONS, cloneJointPose, interpolateJointPose, normalizePoseId, poseCanLoop, poseForObject, presetJoints, presetPhase, presetRoot } from './rig.js'
+import { normalizeFaceText } from './minimalPerson.js'
 
 const CAMERA_ID = '__shot_camera__'
 // When embedded with a ?key=... query (canvas director nodes), scope storage per node so multiple instances do not share a project.
@@ -40,6 +41,14 @@ const DEFAULT_LIGHTING = {
 }
 const FPS_OPTIONS = [24, 25, 30]
 const FOCAL_LENGTH_PRESETS = [18, 24, 35, 50, 85, 120]
+const PERSON_BODY_TYPES = [
+  ['standard', '中性人体'],
+  ['female', '女性人体'],
+  ['male', '男性人体'],
+  ['tall', '修长人体'],
+  ['broad', '宽体人体'],
+  ['minimal', '极简模型'],
+]
 const BRAND_MARK_URL = `${import.meta.env.BASE_URL}branding/monoform-mark.png`
 const ASPECT_RATIOS = [
   { value: '16:9', label: '16 : 9 · 横屏视频', ratio: 16 / 9 },
@@ -320,6 +329,7 @@ function normalizePerson(object) {
     joints: cloneJointPose(object.joints),
     footLock: Boolean(object.footLock),
     continuousMotion: poseCanLoop(pose) && Boolean(object.continuousMotion),
+    faceText: normalizeFaceText(object.faceText),
   }
 }
 
@@ -877,6 +887,7 @@ function LeftSidebar({ objects, selectedId, onSelect, onAddPerson, onAddPrimitiv
           <AssetCard icon={UserRound} title="男性人体" subtitle="宽肩躯干 · 真人比例" onClick={() => onAddPerson('male')} previewClass="person-preview male" />
           <AssetCard icon={UserRound} title="修长人物" subtitle="高挑比例 · 适合走位" onClick={() => onAddPerson('tall')} previewClass="person-preview tall" />
           <AssetCard icon={UserRound} title="宽体人物" subtitle="厚重比例 · 强轮廓" onClick={() => onAddPerson('broad')} previewClass="person-preview broad" />
+          <AssetCard icon={ScanFace} title="极简模型" subtitle="圆柱+圆头 · 可写文字" onClick={() => onAddPerson('minimal')} />
           <div className="section-kicker section-gap">基础物体</div>
           <div className="primitive-grid">
             <button onClick={() => onAddPrimitive('box')}><Box size={24} /><span>方块</span></button>
@@ -997,17 +1008,25 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
               return <div className="custom-aspect-inputs"><span>自定义</span><input aria-label="自定义画幅宽" type="number" min="0.1" max="100" step="0.1" value={customWidth} onChange={event => onUpdateCamera({ aspectRatio: customAspectValue(event.target.value, customHeight) })} /><i>:</i><input aria-label="自定义画幅高" type="number" min="0.1" max="100" step="0.1" value={customHeight} onChange={event => onUpdateCamera({ aspectRatio: customAspectValue(customWidth, event.target.value) })} /></div>
             })()}
           </div>
+        ) : selected.type === 'person' && selected.bodyType === 'minimal' ? (
+          <div className="inspector-section">
+            <div className="section-title"><span>人物</span><ChevronDown size={14} /></div>
+            <label className="select-field"><span>体型</span><select value={selected.bodyType} onChange={e => onUpdateObject({ bodyType: e.target.value })}>{PERSON_BODY_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label className="text-field"><span>面部文字</span><input aria-label="极简模型面部文字" maxLength={5} placeholder="1-5 个字，可留空" value={selected.faceText || ''} onChange={event => onUpdateObject({ faceText: normalizeFaceText(event.target.value) })} /><output>{Array.from(selected.faceText || '').length}/5</output></label>
+            <p className="pose-source-note">极简模型为静态占位：不参与动作、骨骼与表情，用于构图、朝向和面部文字标注。切回其他体型后会恢复原有动作设置。</p>
+            <label className="color-field person-color-field"><span>人物颜色</span><input type="color" value={selected.color || '#e8e3d8'} onChange={e => onUpdateObject({ color: e.target.value })} /><output>{selected.color || '#e8e3d8'}</output></label>
+          </div>
         ) : selected.type === 'person' ? (
           <div className="inspector-section">
             <div className="section-title"><span>人物</span><ChevronDown size={14} /></div>
-            <label className="select-field"><span>体型</span><select value={selected.bodyType} onChange={e => onUpdateObject({ bodyType: e.target.value })}><option value="standard">中性人体</option><option value="female">女性人体</option><option value="male">男性人体</option><option value="tall">修长人体</option><option value="broad">宽体人体</option></select></label>
+            <label className="select-field"><span>体型</span><select value={selected.bodyType} onChange={e => onUpdateObject({ bodyType: e.target.value })}>{PERSON_BODY_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="select-field"><span>动作预设</span><select value={normalizePoseId(selected.pose)} onChange={e => applyPreset(e.target.value)}>{RIG_PRESET_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="range-field pose-time-field"><span>动作相位</span><input type="range" min="0" max="1" step="0.01" value={Number.isFinite(selected.poseTime) ? selected.poseTime : presetPhase(selected.pose)} onChange={e => onUpdateObject({ poseTime: Number(e.target.value) })} /><output>{Math.round((Number.isFinite(selected.poseTime) ? selected.poseTime : presetPhase(selected.pose)) * 100)}%</output></label>
             <label className={`motion-loop-control ${canLoopPose ? '' : 'is-disabled'}`}>
               <input type="checkbox" checked={canLoopPose && Boolean(selected.continuousMotion)} disabled={!canLoopPose} onChange={event => onUpdateObject({ continuousMotion: event.target.checked })} />
               <span><strong>随时间轴循环动作</strong><small>{canLoopPose ? '播放、拖帧和导出时持续循环' : '当前预设是固定姿势，不支持循环'}</small></span>
             </label>
-            <p className="pose-source-note">角色状态关键帧会记录动作、相位、循环开关和完整骨骼，并在对应帧切换。动作来源：Three.js X-Bot 与 CC0 日常动作；当前模型没有面部表情。</p>
+            <p className="pose-source-note">角色状态关键帧会记录动作、相位、循环开关和完整骨骼，并在对应帧切换。动作来源：Three.js X-Bot 与 CC0 日常动作；当前模型没有面部表情，需要角色标识时可用「极简模型」的面部文字。</p>
             <div className="pose-library">
               <div className="pose-library-head"><span>动作库</span><small>{RIG_PRESET_OPTIONS.length} PRESETS</small></div>
               {RIG_PRESET_GROUPS.map(group => (
@@ -1235,6 +1254,8 @@ function CameraKeyframeEditor({ keyframe, objects = [], totalFrames = 0, onChang
 
 function Timeline({ currentFrame, fps, totalFrames, objects = [], onChangeCameraKeyframe, onOpenSettings, onSeek, playing, onTogglePlay, keyframes, onAddKeyframe, onDeleteKeyframe, objectTrack, onAddObjectKeyframe, onDeleteObjectKeyframe, selectedKeyframe, onSelectKeyframe, onMoveKeyframe, onCopyKeyframe, onPasteKeyframe, onDeleteSelectedKeyframe, onChangeInterpolation, hasClipboard }) {
   const [dragging, setDragging] = useState(null)
+  // The minimal person is a static placeholder: record its transforms without posing language.
+  const trackIsRiggedPerson = objectTrack?.type === 'person' && objectTrack?.bodyType !== 'minimal'
   const rulerFrames = useMemo(() => [...new Set(Array.from({ length: 6 }, (_, index) => Math.round(totalFrames * index / 5)))], [totalFrames])
   const selectedCameraKeyframe = useMemo(() => (
     selectedKeyframe?.kind === 'camera'
@@ -1282,7 +1303,7 @@ function Timeline({ currentFrame, fps, totalFrames, objects = [], onChangeCamera
         const isDragged = dragging?.kind === kind && dragging?.trackId === trackId && dragging?.fromFrame === key.frame
         const displayFrame = isDragged ? dragging.toFrame : key.frame
         const isSelected = selectedKeyframe?.kind === kind && selectedKeyframe?.trackId === trackId && selectedKeyframe?.frame === key.frame
-        const stateCopy = kind === 'object' && objectTrack?.type === 'person' ? ` · ${poseLabel(key.pose)}${key.continuousMotion ? '（持续）' : ''}` : ''
+        const stateCopy = kind === 'object' && trackIsRiggedPerson ? ` · ${poseLabel(key.pose)}${key.continuousMotion ? '（持续）' : ''}` : ''
         const title = `第 ${key.frame} 帧${stateCopy} · ${normalizeInterpolation(key.interpolation) === 'smooth' ? '平滑' : normalizeInterpolation(key.interpolation) === 'linear' ? '线性' : '保持'} · 拖动可移动`
         return <button key={key.frame} className={`keyframe ${kind} ${key.frame === currentFrame ? 'is-current' : ''} ${isSelected ? 'is-selected' : ''}`} data-interpolation={normalizeInterpolation(key.interpolation)} style={{ left: `${displayFrame / totalFrames * 100}%` }} title={title} aria-label={title} onPointerDown={event => beginKeyDrag(event, key, kind, trackId)} onDoubleClick={event => { event.stopPropagation(); onDelete(key.frame); onSelectKeyframe(null) }} />
       })}
@@ -1299,7 +1320,7 @@ function Timeline({ currentFrame, fps, totalFrames, objects = [], onChangeCamera
         <div className="timeline-key-editor">
           {selectedKeyframe ? (
             <>
-              <span>{selectedKeyframe.kind === 'camera' ? '镜头' : objectTrack?.type === 'person' ? '角色状态' : '物体'} · {selectedKeyframe.frame} 帧</span>
+              <span>{selectedKeyframe.kind === 'camera' ? '镜头' : trackIsRiggedPerson ? '角色状态' : '物体'} · {selectedKeyframe.frame} 帧</span>
               <select value={selectedKeyframe.interpolation} onChange={event => onChangeInterpolation(event.target.value)} title="插值方式">
                 <option value="smooth">平滑</option>
                 <option value="linear">线性</option>
@@ -1320,7 +1341,7 @@ function Timeline({ currentFrame, fps, totalFrames, objects = [], onChangeCamera
           <>
             <div className="track-label object-track-label">{objectTrack.type === 'person' ? <UserRound size={13} /> : <Box size={13} />}<span>{objectTrack.name}</span></div>
             <div className="object-track-slot">{renderTrack(objectTrack.keyframes, 'object', onDeleteObjectKeyframe, objectTrack.id)}</div>
-            <button className="keyframe-button object-keyframe-button" onClick={onAddObjectKeyframe}><Plus size={13} /> {objectTrack.type === 'person' ? '角色状态关键帧' : '物体关键帧'}</button>
+            <button className="keyframe-button object-keyframe-button" onClick={onAddObjectKeyframe}><Plus size={13} /> {trackIsRiggedPerson ? '角色状态关键帧' : '物体关键帧'}</button>
           </>
         )}
       </div>
@@ -1996,7 +2017,7 @@ export default function App() {
 
   const addPerson = bodyType => {
     const id = uid()
-    const person = { id, name: `人物 · ${objects.filter(item => item.type === 'person').length + 1}`, type: 'person', bodyType, pose: 'idle', poseTime: presetPhase('idle'), joints: presetJoints(), rigRoot: [0, 0, 0], footLock: false, continuousMotion: false, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], color: '#e8e3d8' }
+    const person = { id, name: `${bodyType === 'minimal' ? '极简模型' : '人物'} · ${objects.filter(item => item.type === 'person').length + 1}`, type: 'person', bodyType, pose: 'idle', poseTime: presetPhase('idle'), joints: presetJoints(), rigRoot: [0, 0, 0], footLock: false, continuousMotion: false, faceText: '', position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], color: '#e8e3d8' }
     setObjects(list => [...list, person])
     setSelectedId(id)
   }
@@ -2696,7 +2717,7 @@ export default function App() {
           keyframes={keyframes}
           onAddKeyframe={addKeyframe}
           onDeleteKeyframe={deleteKeyframe}
-          objectTrack={activeObject ? { id: activeObject.id, name: activeObject.name, type: activeObject.type, keyframes: characterKeyframes[activeObject.id] || [] } : null}
+          objectTrack={activeObject ? { id: activeObject.id, name: activeObject.name, type: activeObject.type, bodyType: activeObject.bodyType, keyframes: characterKeyframes[activeObject.id] || [] } : null}
           onAddObjectKeyframe={addObjectKeyframe}
           onDeleteObjectKeyframe={deleteObjectKeyframe}
           selectedKeyframe={selectedKeyframeInfo}

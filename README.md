@@ -15,21 +15,13 @@ MONOFORM 不把生成式 AI 当作最终成片工具。可选的本地 AI 服务
 
 ## 在线使用
 
-### [立即打开 MONOFORM](https://nivenice.github.io/monoform-previs-studio/)
+### [立即打开 MONOFORM](https://guiyi-xi.github.io/monoform-previs-studio/)
 
 完整功能说明请查看：[MONOFORM 使用说明](docs/USER_GUIDE.md)
 
 人物白模已经内置在项目中，无需另外下载或导入。在线版首次打开时，浏览器会从本站加载约 3 MB 的内置模型资源，之后通常会使用浏览器缓存。推荐使用最新版 Chrome 或 Edge，建议在电脑端全屏使用。
 
 ![MONOFORM 完整工作台](docs/screenshots/monoform-overview.png)
-
-## 视频教学
-
-[![点击观看 MONOFORM 录屏教学](docs/screenshots/monoform-video-cover.jpg)](https://nivenice.github.io/monoform-previs-studio/tutorial/monoform-getting-started.mp4)
-
-点击上方封面即可播放新版录屏教学。视频时长约 8 分 11 秒，包含声音；如果浏览器没有自动播放，可使用下面的链接直接打开或下载。
-
-[播放或下载教学录屏 MP4](https://nivenice.github.io/monoform-previs-studio/tutorial/monoform-getting-started.mp4)
 
 ## 界面说明
 

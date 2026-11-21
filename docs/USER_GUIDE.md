@@ -232,7 +232,3 @@ AI 配置文件 `server/model-config.local.json` 已被 Git 忽略。不要把 A
 **打开工程后关键帧消失**：请使用「导出工程」生成的 JSON 进行备份，不要只依赖浏览器自动保存；导入后会恢复镜头、角色状态、物体关键帧和参考图设置。
 
 **MP4 导出很慢**：降低工程时长或 FPS，先用 PNG 检查单帧构图；导出期间保持页面打开。
-
-## 12. 教学视频
-
-[播放或下载 MONOFORM 教学录屏](https://nivenice.github.io/monoform-previs-studio/tutorial/monoform-getting-started.mp4)

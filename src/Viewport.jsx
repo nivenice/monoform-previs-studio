@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { poseForObject, presetDefinition } from './rig.js'
 import { MinimalPersonModel } from './MinimalPersonModel.jsx'
+import { normalizeAxisLocks } from './transformValues.js'
 
 const CAMERA_ID = '__shot_camera__'
 const BUILT_IN_MODEL_URL = `${import.meta.env.BASE_URL}models/xbot-animated.glb`
@@ -934,10 +935,13 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
   const scaleTransformStart = useRef(null)
   const appliedGroundRequest = useRef(null)
   const orbitControls = useThree(state => state.controls)
-  const scaleAxisLocks = Array.isArray(data.scaleAxisLocks) ? data.scaleAxisLocks : [false, false, false]
+  const positionAxisLocks = useMemo(() => normalizeAxisLocks(data.positionAxisLocks), [data.positionAxisLocks])
+  const rotationAxisLocks = useMemo(() => normalizeAxisLocks(data.rotationAxisLocks), [data.rotationAxisLocks])
+  const scaleAxisLocks = useMemo(() => normalizeAxisLocks(data.scaleAxisLocks), [data.scaleAxisLocks])
+  const activeAxisLocks = transformMode === 'translate' ? positionAxisLocks : transformMode === 'rotate' ? rotationAxisLocks : scaleAxisLocks
   const stateAnimationTime = Math.max(0, animationTime - (Number.isFinite(data.motionStartTime) ? data.motionStartTime : 0))
   useEffect(() => {
-    if (!groundRequest || groundRequest.id !== data.id || !groupRef.current || data.locked || preview) return
+    if (!groundRequest || groundRequest.id !== data.id || !groupRef.current || data.locked || positionAxisLocks[1] || preview) return
     const requestKey = `${groundRequest.id}:${groundRequest.nonce}`
     if (appliedGroundRequest.current === requestKey) return
     const object = groupRef.current
@@ -947,14 +951,14 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
     appliedGroundRequest.current = requestKey
     object.position.y -= bounds.min.y
     onUpdate(data.id, { position: object.position.toArray() })
-  }, [data.id, data.locked, groundRequest?.id, groundRequest?.nonce, onUpdate, preview])
+  }, [data.id, data.locked, groundRequest?.id, groundRequest?.nonce, onUpdate, positionAxisLocks, preview])
   const syncTransform = useCallback(() => {
     const object = groupRef.current
     if (!object) return
     let nextScale = object.scale.toArray()
     if (transformMode === 'scale' && scaleTransformStart.current) {
       const baseline = scaleTransformStart.current
-      const locks = Array.isArray(data.scaleAxisLocks) ? data.scaleAxisLocks : [false, false, false]
+      const locks = scaleAxisLocks
       if (data.proportionalScale) {
         const changedAxis = nextScale
           .map((value, axis) => ({ axis, change: locks[axis] ? -1 : Math.abs(value / Math.max(0.0001, baseline[axis]) - 1) }))
@@ -969,13 +973,13 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
       rotation: [object.rotation.x, object.rotation.y, object.rotation.z],
       scale: nextScale,
     })
-  }, [data.id, data.proportionalScale, data.scaleAxisLocks, onUpdate, transformMode])
+  }, [data.id, data.proportionalScale, onUpdate, scaleAxisLocks, transformMode])
   const beginObjectInteraction = useCallback(event => {
     if (shouldKeepCurrentSelection(event, selectedId, selected, transformMode)) return
     event.stopPropagation()
     onSelect(data.id)
     if (data.locked) return
-    if (!selected || transformMode !== 'rotate' || !groupRef.current) return
+    if (!selected || transformMode !== 'rotate' || !groupRef.current || rotationAxisLocks.every(Boolean)) return
     event.nativeEvent?.stopImmediatePropagation?.()
     event.target?.setPointerCapture?.(event.pointerId)
     objectRotateDrag.current = {
@@ -986,7 +990,7 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
     }
     if (orbitControls) orbitControls.enabled = false
     document.body.style.cursor = 'grabbing'
-  }, [data.id, data.locked, onSelect, orbitControls, selected, selectedId, transformMode])
+  }, [data.id, data.locked, onSelect, orbitControls, rotationAxisLocks, selected, selectedId, transformMode])
   const rotateObjectFromSurface = useCallback(event => {
     const drag = objectRotateDrag.current
     const object = groupRef.current
@@ -995,12 +999,13 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
     const dx = event.clientX - drag.startX
     const dy = event.clientY - drag.startY
     const roll = Boolean(event.shiftKey || event.nativeEvent?.shiftKey)
-    object.rotation.set(
+    const nextRotation = [
       roll ? drag.rotation[0] : drag.rotation[0] + dy * 0.01,
       roll ? drag.rotation[1] : drag.rotation[1] + dx * 0.01,
       roll ? drag.rotation[2] + dx * 0.01 : drag.rotation[2],
-    )
-  }, [])
+    ]
+    object.rotation.set(...nextRotation.map((value, axis) => rotationAxisLocks[axis] ? drag.rotation[axis] : value))
+  }, [rotationAxisLocks])
   const endObjectInteraction = useCallback(event => {
     const drag = objectRotateDrag.current
     if (!drag || event.pointerId !== drag.pointerId) return
@@ -1072,15 +1077,15 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
   return (
     <>
       {content}
-      {selected && !data.locked && !preview && transformMode !== 'select' && (
+      {selected && !data.locked && !preview && transformMode !== 'select' && !activeAxisLocks.every(Boolean) && (
         <TransformControls
           object={groupRef}
           mode={transformMode}
           space={transformSpace}
           size={0.8}
-          showX={transformMode !== 'scale' || !scaleAxisLocks[0]}
-          showY={transformMode !== 'scale' || !scaleAxisLocks[1]}
-          showZ={transformMode !== 'scale' || !scaleAxisLocks[2]}
+          showX={!activeAxisLocks[0]}
+          showY={!activeAxisLocks[1]}
+          showZ={!activeAxisLocks[2]}
           translationSnap={snapEnabled ? 0.1 : null}
           rotationSnap={snapEnabled ? Math.PI / 36 : null}
           scaleSnap={snapEnabled ? 0.1 : null}
@@ -1095,6 +1100,9 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
 
 function CameraModel({ data, selected, selectedId, transformMode, transformSpace = 'world', snapEnabled = true, onSelect, onUpdate }) {
   const groupRef = useRef(null)
+  const positionAxisLocks = useMemo(() => normalizeAxisLocks(data.positionAxisLocks), [data.positionAxisLocks])
+  const rotationAxisLocks = useMemo(() => normalizeAxisLocks(data.rotationAxisLocks), [data.rotationAxisLocks])
+  const activeAxisLocks = transformMode === 'rotate' ? rotationAxisLocks : positionAxisLocks
   const syncTransform = useCallback(() => {
     if (!groupRef.current) return
     onUpdate({
@@ -1143,12 +1151,15 @@ function CameraModel({ data, selected, selectedId, transformMode, transformSpace
   return (
     <>
       {rig}
-      {selected && ['translate', 'rotate'].includes(transformMode) && (
+      {selected && ['translate', 'rotate'].includes(transformMode) && !activeAxisLocks.every(Boolean) && (
         <TransformControls
           object={groupRef}
           mode={transformMode}
           space={transformSpace}
           size={0.8}
+          showX={!activeAxisLocks[0]}
+          showY={!activeAxisLocks[1]}
+          showZ={!activeAxisLocks[2]}
           translationSnap={snapEnabled ? 0.1 : null}
           rotationSnap={snapEnabled ? Math.PI / 36 : null}
           onObjectChange={syncTransform}

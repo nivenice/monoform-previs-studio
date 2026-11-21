@@ -27,11 +27,12 @@ MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭
 
 | 路径 | 职责 |
 | --- | --- |
-| `src/App.jsx` | 约 2700 行。全部应用状态、面板、时间轴、镜头管理、撤销/自动保存、PNG/MP4/JSON 导出。应用层都在这里 |
-| `src/Viewport.jsx` | 约 1400 行。全部 Three.js 场景；导出 `MainViewport`、`CameraPreview`。人物白模与骨骼、IK、几何体、光照、路线预览；按 `bodyType === 'minimal'` 切换到极简模型 |
+| `src/App.jsx` | 约 2900 行。全部应用状态、面板、时间轴、镜头管理、撤销/自动保存、PNG/MP4/JSON 导出。应用层都在这里 |
+| `src/Viewport.jsx` | 约 1450 行。全部 Three.js 场景；导出 `MainViewport`、`CameraPreview`。人物白模与骨骼、IK、几何体、光照、路线预览；按 `bodyType === 'minimal'` 切换到极简模型 |
 | `src/MinimalPersonModel.jsx` | 极简模型渲染：圆柱身体、球头、正面球面片与 `CanvasTexture` 面部文字（不加载 Mixamo GLB） |
 | `src/minimalPerson.js` | 纯函数：极简模型尺寸、面部文字归一化（1–5 字）与字号自适应 |
 | `src/cameraMotion.js` | 纯函数：跟随镜头、景别预设、朝向求解 |
+| `src/transformValues.js` | 纯函数：变换轴锁定归一化、锁定感知归零/复位、相机帧锁定合并、数值格式化/解析/步进 |
 | `src/previsMotion.js` | 纯函数：地面路线 → 弧长重采样的角色关键帧 |
 | `src/routeOwnership.js` | 纯函数：路线关键帧与手工关键帧的所有权判定与合并 |
 | `src/sceneToMonoform.js` | 纯函数：AI 场景 Z-up → MONOFORM Y-up 的物体/相机转换 |

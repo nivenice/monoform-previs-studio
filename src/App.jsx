@@ -14,6 +14,7 @@ import { ShotsPanel } from './ShotsPanel.jsx'
 import { mergeRouteKeyframes, removeRouteOwnedKeyframes, routeOwnedKeyframe } from './routeOwnership.js'
 import { JOINT_DEFINITIONS, JOINT_GROUPS, RIG_PRESET_GROUPS, RIG_PRESET_OPTIONS, cloneJointPose, interpolateJointPose, normalizePoseId, poseCanLoop, poseForObject, presetJoints, presetPhase, presetRoot } from './rig.js'
 import { normalizeFaceText } from './minimalPerson.js'
+import { axisValueDigits, formatAxisValue, mergeCameraAxisLocks, normalizeAxisLocks, parseAxisValue, resetVectorPreservingLocks, stepAxisValue, toggleAxisLock } from './transformValues.js'
 
 const CAMERA_ID = '__shot_camera__'
 // When embedded with a ?key=... query (canvas director nodes), scope storage per node so multiple instances do not share a project.
@@ -131,11 +132,14 @@ const initialObjects = [
 
 const DEFAULT_CAMERA_POSITION = [7.4, 4.6, 8.2]
 const LEGACY_DEFAULT_CAMERA_TARGET = [0.2, 1.2, 0]
+const DEFAULT_CAMERA_ROTATION = cameraRotationToward(DEFAULT_CAMERA_POSITION, LEGACY_DEFAULT_CAMERA_TARGET)
 const initialCamera = {
   position: [...DEFAULT_CAMERA_POSITION],
-  rotation: cameraRotationToward(DEFAULT_CAMERA_POSITION, LEGACY_DEFAULT_CAMERA_TARGET),
+  rotation: [...DEFAULT_CAMERA_ROTATION],
   focalLength: 42,
   aspectRatio: '16:9',
+  positionAxisLocks: [false, false, false],
+  rotationAxisLocks: [false, false, false],
 }
 const DEFAULT_REFERENCE = {
   image: '',
@@ -233,6 +237,8 @@ function normalizeCamera(camera = {}) {
     aspectRatio: ASPECT_RATIOS.some(option => option.ratio && option.value === camera.aspectRatio) || CUSTOM_ASPECT_PATTERN.test(String(camera.aspectRatio || ''))
       ? camera.aspectRatio
       : initialCamera.aspectRatio,
+    positionAxisLocks: normalizeAxisLocks(camera.positionAxisLocks),
+    rotationAxisLocks: normalizeAxisLocks(camera.rotationAxisLocks),
   }
 }
 
@@ -333,6 +339,16 @@ function normalizePerson(object) {
   }
 }
 
+function normalizeObjectAxisLocks(object) {
+  if (!object || typeof object !== 'object') return object
+  return {
+    ...object,
+    positionAxisLocks: normalizeAxisLocks(object.positionAxisLocks),
+    rotationAxisLocks: normalizeAxisLocks(object.rotationAxisLocks),
+    scaleAxisLocks: normalizeAxisLocks(object.scaleAxisLocks),
+  }
+}
+
 function readCustomPoses() {
   try {
     const poses = JSON.parse(localStorage.getItem(CUSTOM_POSE_STORAGE_KEY) || '[]')
@@ -398,7 +414,7 @@ function uniqueShotName(shots, preferred) {
 }
 
 function normalizeShot(shot, index, fallback) {
-  const objects = removeUntouchedStarterBlocks((Array.isArray(shot?.objects) ? shot.objects : fallback.objects).map(normalizePerson))
+  const objects = removeUntouchedStarterBlocks((Array.isArray(shot?.objects) ? shot.objects : fallback.objects).map(normalizePerson).map(normalizeObjectAxisLocks))
   const camera = normalizeCamera(shot?.camera || fallback.camera)
   let keyframes = normalizeCameraKeyframes(shot?.keyframes ?? fallback.keyframes ?? [], camera)
   let objectKeyframes = normalizeObjectTracks(shot?.objectKeyframes || shot?.characterKeyframes || fallback.objectKeyframes || {})
@@ -571,7 +587,7 @@ function followAtCameraKeyframe(baseFollow, key) {
   }
 }
 
-function cameraAtFrame(keyframes, frame, aspectRatio = '16:9') {
+function resolveCameraAtFrame(keyframes, frame, aspectRatio = '16:9') {
   const sorted = [...keyframes].sort((a, b) => a.frame - b.frame)
   if (!sorted.length) return { ...initialCamera, aspectRatio }
   const exact = sorted.find(key => key.frame === frame)
@@ -601,6 +617,10 @@ function cameraAtFrame(keyframes, frame, aspectRatio = '16:9') {
     followOrbitDegrees: left.followOrbitDegrees != null && right.followOrbitDegrees != null ? lerpAngle(left.followOrbitDegrees * Math.PI / 180, right.followOrbitDegrees * Math.PI / 180, t) * 180 / Math.PI : (t < 0.5 ? left.followOrbitDegrees : right.followOrbitDegrees),
     followSideOffset: left.followSideOffset != null && right.followSideOffset != null ? lerp(left.followSideOffset, right.followSideOffset, t) : (t < 0.5 ? left.followSideOffset : right.followSideOffset),
   }
+}
+
+function cameraAtFrame(keyframes, frame, aspectRatio = '16:9', baseCamera) {
+  return mergeCameraAxisLocks(resolveCameraAtFrame(keyframes, frame, aspectRatio), baseCamera)
 }
 
 function objectKeyframeFromObject(object, frame) {
@@ -713,49 +733,139 @@ function ToolButton({ icon: Icon, active, label, onClick, disabled = false, shor
   )
 }
 
-function AxisSlider({ label, title, value, onChange, accent, min, max, step, unit = '', disabled = false, locked = false, onToggleLock }) {
+function AxisValueInput({ title, label, value, min, max, step, digits, unit = '', disabled = false, onChange }) {
   const numericValue = Number.isFinite(Number(value)) ? Number(value) : 0
-  const safeMin = Math.min(min, Math.floor(numericValue / step) * step)
-  const safeMax = Math.max(max, Math.ceil(numericValue / step) * step)
-  const digits = step < 0.1 ? 2 : step < 1 ? 1 : 0
+  const [draft, setDraft] = useState(() => formatAxisValue(numericValue, digits))
+  const focusedRef = useRef(false)
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(formatAxisValue(numericValue, digits))
+  }, [digits, numericValue])
+  const commitText = text => {
+    const next = parseAxisValue(text, min, max, digits)
+    if (next !== null && next !== numericValue) onChange(next)
+    return next
+  }
+  const handleChange = event => {
+    const text = event.target.value
+    setDraft(text)
+    commitText(text)
+  }
+  const handleBlur = () => {
+    focusedRef.current = false
+    const next = parseAxisValue(draft, min, max, digits)
+    if (next === null) setDraft(formatAxisValue(numericValue, digits))
+    else {
+      if (next !== numericValue) onChange(next)
+      setDraft(formatAxisValue(next, digits))
+    }
+  }
+  const handleKeyDown = event => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      event.currentTarget.blur()
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setDraft(formatAxisValue(numericValue, digits))
+      event.currentTarget.blur()
+      return
+    }
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    event.preventDefault()
+    const amount = Math.abs(Number(step)) || 0.01
+    const next = stepAxisValue(numericValue, event.key === 'ArrowUp' ? 1 : -1, amount * (event.shiftKey ? 10 : 1), min, max, digits)
+    setDraft(formatAxisValue(next, digits))
+    if (next !== numericValue) onChange(next)
+  }
   return (
-    <div className={`axis-slider ${onToggleLock ? 'has-axis-lock' : ''} ${locked ? 'is-axis-locked' : ''}`} style={{ '--axis-color': accent }}>
-      <span>{label}</span>
-      <input aria-label={`${title} ${label}`} type="range" min={safeMin} max={safeMax} step={step} value={numericValue} onChange={event => onChange(Number(event.target.value))} disabled={disabled || locked} />
-      <output>{numericValue.toFixed(digits)}{unit}</output>
-      {onToggleLock && <button type="button" className="axis-lock-button" aria-label={`${locked ? '解除' : '锁定'}缩放 ${label} 轴`} aria-pressed={locked} title={`${locked ? '解除' : '锁定'} ${label} 轴缩放`} onClick={onToggleLock}>{locked ? <Lock size={10} /> : <Unlock size={10} />}</button>}
+    <div className="axis-value-field">
+      <input
+        aria-label={`${title} ${label} 数值`}
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        spellCheck={false}
+        value={draft}
+        disabled={disabled}
+        onFocus={event => { focusedRef.current = true; event.target.select() }}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+      />
+      {unit && <i>{unit}</i>}
     </div>
   )
 }
 
-function VectorFields({ title, value, onChange, degrees = false, kind = 'position', disabled = false, proportionalScale = false, scaleAxisLocks = [false, false, false], onToggleProportionalScale, onToggleScaleAxis }) {
-  const display = degrees ? value.map(radToDeg) : value
+function AxisSlider({ label, title, value, onChange, accent, min, max, step, unit = '', disabled = false, locked = false, onToggleLock }) {
+  const numericValue = Number.isFinite(Number(value)) ? Number(value) : 0
+  const safeMin = Math.min(min, Math.floor(numericValue / step) * step)
+  const safeMax = Math.max(max, Math.ceil(numericValue / step) * step)
+  const digits = axisValueDigits(step)
+  const lockName = title.split(' · ')[0]
+  return (
+    <div className={`axis-slider ${onToggleLock ? 'has-axis-lock' : ''} ${locked ? 'is-axis-locked' : ''}`} style={{ '--axis-color': accent }}>
+      <span>{label}</span>
+      <input aria-label={`${title} ${label}`} type="range" min={safeMin} max={safeMax} step={step} value={numericValue} onChange={event => onChange(Number(event.target.value))} disabled={disabled || locked} />
+      <AxisValueInput title={title} label={label} value={numericValue} min={safeMin} max={safeMax} step={step} digits={digits} unit={unit} disabled={disabled || locked} onChange={onChange} />
+      {onToggleLock && <button type="button" className="axis-lock-button" aria-label={`${locked ? '解除' : '锁定'} ${lockName} ${label} 轴`} aria-pressed={locked} title={`${locked ? '解除' : '锁定'} ${lockName} ${label} 轴`} disabled={disabled} onClick={onToggleLock}>{locked ? <Lock size={10} /> : <Unlock size={10} />}</button>}
+    </div>
+  )
+}
+
+function VectorFields({ title, value, onChange, degrees = false, kind = 'position', disabled = false, axisLocks = [false, false, false], onToggleAxisLock, proportionalScale = false, onToggleProportionalScale, onReset, resetLabel = '归零', resetTitle }) {
+  const source = Array.isArray(value) ? value : [0, 0, 0]
+  const display = degrees ? source.map(radToDeg) : source
   const settings = degrees
-    ? { min: -180, max: 180, step: 1, unit: '°' }
+    ? { min: -180, max: 180, step: 0.1, unit: '°' }
     : kind === 'scale'
-      ? { min: 0.1, max: 5, step: 0.05, unit: '' }
-      : { min: -30, max: 30, step: 0.05, unit: '' }
+      ? { min: 0.05, max: 5, step: 0.01, unit: '' }
+      : { min: -30, max: 30, step: 0.01, unit: '' }
+  const locks = normalizeAxisLocks(axisLocks)
   const update = (index, next) => {
-    if (kind === 'scale' && scaleAxisLocks[index]) return
+    if (locks[index]) return
     const copy = [...display]
     if (kind === 'scale' && proportionalScale) {
       const baseline = Math.max(0.0001, Math.abs(display[index]))
       const ratio = next / baseline
-      display.forEach((current, axis) => { copy[axis] = scaleAxisLocks[axis] ? current : Math.max(0.05, current * ratio) })
+      display.forEach((current, axis) => { copy[axis] = locks[axis] ? current : Math.max(0.05, current * ratio) })
     } else copy[index] = next
     onChange(degrees ? copy.map(degToRad) : copy)
   }
+  const resetDisabled = disabled || (Boolean(onToggleAxisLock) && locks.every(Boolean))
   return (
     <div className="property-group">
       <div className="property-label-row">
-        <div className="property-label">{title}</div>
-        {kind === 'scale' && <button type="button" className={`proportional-lock ${proportionalScale ? 'is-active' : ''}`} aria-pressed={proportionalScale} onClick={onToggleProportionalScale} disabled={disabled} title="开启后拖动任意未锁定轴，其他未锁定轴按原比例同步缩放">{proportionalScale ? <Link2 size={11} /> : <Unlink2 size={11} />} 等比</button>}
+        <div className="property-label" title={title}>{title}</div>
+        {(kind === 'scale' || onReset) && <div className="property-label-actions">
+          {kind === 'scale' && <button type="button" className={`proportional-lock ${proportionalScale ? 'is-active' : ''}`} aria-pressed={proportionalScale} onClick={onToggleProportionalScale} disabled={disabled} title="开启后拖动任意未锁定轴，其他未锁定轴按原比例同步缩放">{proportionalScale ? <Link2 size={11} /> : <Unlink2 size={11} />} 等比</button>}
+          {onReset && <button type="button" className="property-reset" onClick={onReset} disabled={resetDisabled} title={resetTitle || `${resetLabel}${title}`}><RotateCcw size={10} /> {resetLabel}</button>}
+        </div>}
       </div>
       <div className="axis-sliders">
-        <AxisSlider label="X" title={title} value={display[0]} onChange={value => update(0, value)} accent="#d7675b" disabled={disabled} locked={kind === 'scale' && Boolean(scaleAxisLocks[0])} onToggleLock={kind === 'scale' ? () => onToggleScaleAxis?.(0) : null} {...settings} />
-        <AxisSlider label="Y" title={title} value={display[1]} onChange={value => update(1, value)} accent="#76a96c" disabled={disabled} locked={kind === 'scale' && Boolean(scaleAxisLocks[1])} onToggleLock={kind === 'scale' ? () => onToggleScaleAxis?.(1) : null} {...settings} />
-        <AxisSlider label="Z" title={title} value={display[2]} onChange={value => update(2, value)} accent="#5d87c7" disabled={disabled} locked={kind === 'scale' && Boolean(scaleAxisLocks[2])} onToggleLock={kind === 'scale' ? () => onToggleScaleAxis?.(2) : null} {...settings} />
+        <AxisSlider label="X" title={title} value={display[0]} onChange={value => update(0, value)} accent="#d7675b" disabled={disabled} locked={locks[0]} onToggleLock={onToggleAxisLock ? () => onToggleAxisLock(0) : null} {...settings} />
+        <AxisSlider label="Y" title={title} value={display[1]} onChange={value => update(1, value)} accent="#76a96c" disabled={disabled} locked={locks[1]} onToggleLock={onToggleAxisLock ? () => onToggleAxisLock(1) : null} {...settings} />
+        <AxisSlider label="Z" title={title} value={display[2]} onChange={value => update(2, value)} accent="#5d87c7" disabled={disabled} locked={locks[2]} onToggleLock={onToggleAxisLock ? () => onToggleAxisLock(2) : null} {...settings} />
       </div>
+    </div>
+  )
+}
+
+function InspectorSection({ title, collapsed, onToggle, children }) {
+  return (
+    <div className={`inspector-section ${collapsed ? 'is-collapsed' : ''}`}>
+      <button
+        type="button"
+        className="section-title"
+        aria-expanded={!collapsed}
+        title={`${collapsed ? '展开' : '收起'}${title}`}
+        onClick={onToggle}
+        onKeyDown={event => { if (event.key === ' ' || event.key === 'Enter') event.stopPropagation() }}
+      >
+        <span>{title}</span><ChevronDown size={14} />
+      </button>
+      {!collapsed && <div className="section-content">{children}</div>}
     </div>
   )
 }
@@ -918,7 +1028,9 @@ function LeftSidebar({ objects, selectedId, onSelect, onAddPerson, onAddPrimitiv
   )
 }
 
-function Inspector({ selected, camera, objects = [], selectedJoint, customPoses, onSelectJoint, onUpdateObject, onUpdateCamera, onDelete, onDuplicate, onFocus, onToggleLock, onGround, onResetRotation, onResetScale, onSaveCustomPose, onApplyCustomPose, onDeleteCustomPose }) {
+function Inspector({ selected, camera, objects = [], selectedJoint, customPoses, onSelectJoint, onUpdateObject, onUpdateCamera, onDelete, onDuplicate, onFocus, onToggleLock, onGround, onResetPosition, onResetRotation, onResetScale, onSaveCustomPose, onApplyCustomPose, onDeleteCustomPose }) {
+  const [collapsedSections, setCollapsedSections] = useState({})
+  const toggleSection = id => setCollapsedSections(current => ({ ...current, [id]: !current[id] }))
   if (!selected) {
     return <aside className="right-sidebar panel empty-inspector"><MousePointer2 size={24} /><span>选择场景中的物体</span></aside>
   }
@@ -928,6 +1040,18 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
   const rigPose = selected.type === 'person' ? poseForObject(selected) : null
   const canLoopPose = selected.type === 'person' && poseCanLoop(selected.pose)
   const jointRotation = rigPose?.joints[selectedJoint] || [0, 0, 0]
+  const positionLocks = normalizeAxisLocks(isCamera ? camera.positionAxisLocks : selected.positionAxisLocks)
+  const rotationLocks = normalizeAxisLocks(isCamera ? camera.rotationAxisLocks : selected.rotationAxisLocks)
+  const scaleLocks = normalizeAxisLocks(selected.scaleAxisLocks)
+  const toggleAxis = (field, locks, axis) => {
+    const next = toggleAxisLock(locks, axis)
+    if (isCamera) onUpdateCamera({ [field]: next })
+    else onUpdateObject({ [field]: next })
+  }
+  const positionResetLabel = isCamera ? '复位' : '归零'
+  const rotationResetLabel = isCamera ? '复位' : '归零'
+  const positionResetTitle = isCamera ? '恢复默认机位（已锁定的轴保持原值）' : '将位置恢复为 0（已锁定的轴保持原值）'
+  const rotationResetTitle = isCamera ? '恢复默认朝向（已锁定的轴保持原值）' : `${selected.type === 'person' ? '将整体旋转' : '将旋转'}恢复为 0°（已锁定的轴保持原值）`
   const updateJoint = rotation => onUpdateObject({
     joints: { ...rigPose.joints, [selectedJoint]: rotation },
   })
@@ -951,36 +1075,41 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
       </div>
       <div className="inspector-scroll">
         {!isCamera && selected.locked && <div className="locked-banner"><Lock size={12} /> 已锁定空间变换</div>}
-        <div className="inspector-section">
-          <div className="section-title"><span>变换</span><ChevronDown size={14} /></div>
-          <VectorFields title="位置" value={position} onChange={value => isCamera ? onUpdateCamera({ position: value }) : onUpdateObject({ position: value })} disabled={!isCamera && selected.locked} />
+        <InspectorSection title="变换" collapsed={Boolean(collapsedSections.transform)} onToggle={() => toggleSection('transform')}>
+          <VectorFields
+            title="位置"
+            value={position}
+            onChange={value => isCamera ? onUpdateCamera({ position: value }) : onUpdateObject({ position: value })}
+            disabled={!isCamera && selected.locked}
+            axisLocks={positionLocks}
+            onToggleAxisLock={axis => toggleAxis('positionAxisLocks', positionLocks, axis)}
+            onReset={onResetPosition}
+            resetLabel={positionResetLabel}
+            resetTitle={positionResetTitle}
+          />
           {isCamera
-            ? <VectorFields title="摄像机旋转 · X 俯仰 / Y 水平 / Z 翻滚" value={camera.rotation} degrees onChange={rotation => onUpdateCamera({ rotation })} />
-            : <VectorFields title={selected.type === 'person' ? '整体旋转 · X 纵向 / Y 水平 / Z 翻滚' : '旋转'} value={selected.rotation} degrees onChange={rotation => onUpdateObject({ rotation })} disabled={selected.locked} />}
+            ? <VectorFields title="摄像机旋转 · X 俯仰 / Y 水平 / Z 翻滚" value={camera.rotation} degrees onChange={rotation => onUpdateCamera({ rotation })} axisLocks={rotationLocks} onToggleAxisLock={axis => toggleAxis('rotationAxisLocks', rotationLocks, axis)} onReset={onResetRotation} resetLabel={rotationResetLabel} resetTitle={rotationResetTitle} />
+            : <VectorFields title={selected.type === 'person' ? '整体旋转 · X 纵向 / Y 水平 / Z 翻滚' : '旋转'} value={selected.rotation} degrees onChange={rotation => onUpdateObject({ rotation })} disabled={selected.locked} axisLocks={rotationLocks} onToggleAxisLock={axis => toggleAxis('rotationAxisLocks', rotationLocks, axis)} onReset={onResetRotation} resetLabel={rotationResetLabel} resetTitle={rotationResetTitle} />}
           {!isCamera && <VectorFields
             title="缩放"
             kind="scale"
             value={selected.scale}
             proportionalScale={Boolean(selected.proportionalScale)}
-            scaleAxisLocks={Array.isArray(selected.scaleAxisLocks) ? selected.scaleAxisLocks : [false, false, false]}
+            axisLocks={scaleLocks}
             onToggleProportionalScale={() => onUpdateObject({ proportionalScale: !selected.proportionalScale })}
-            onToggleScaleAxis={axis => {
-              const locks = Array.isArray(selected.scaleAxisLocks) ? [...selected.scaleAxisLocks] : [false, false, false]
-              locks[axis] = !locks[axis]
-              onUpdateObject({ scaleAxisLocks: locks })
-            }}
+            onToggleAxisLock={axis => onUpdateObject({ scaleAxisLocks: toggleAxisLock(scaleLocks, axis) })}
+            onReset={onResetScale}
+            resetLabel="归一"
+            resetTitle="将缩放恢复为 1（已锁定的轴保持原值）"
             onChange={scale => onUpdateObject({ scale })}
             disabled={selected.locked}
           />}
           {!isCamera && <div className="transform-quick-actions">
-            <button type="button" onClick={onGround} disabled={selected.locked} title="按当前外形将物体最低点贴到世界地面"><ArrowDownToLine size={11} /> 落到地面</button>
-            <button type="button" onClick={onResetRotation} disabled={selected.locked} title="保持位置和缩放，将整体旋转恢复为零"><RotateCcw size={11} /> 旋转归零</button>
-            <button type="button" onClick={onResetScale} disabled={selected.locked} title="保持位置和旋转，将缩放恢复为 1"><BoxSelect size={11} /> 缩放归一</button>
+            <button type="button" onClick={onGround} disabled={selected.locked || positionLocks[1]} title={positionLocks[1] ? 'Y 轴已锁定，请先解锁' : '按当前外形将物体最低点贴到世界地面'}><ArrowDownToLine size={11} /> 落到地面</button>
           </div>}
-        </div>
+        </InspectorSection>
         {isCamera ? (
-          <div className="inspector-section">
-            <div className="section-title"><span>镜头</span><ChevronDown size={14} /></div>
+          <InspectorSection title="镜头" collapsed={Boolean(collapsedSections.camera)} onToggle={() => toggleSection('camera')}>
             <label className="range-field"><span>焦距</span><input type="range" min="18" max="120" value={camera.focalLength} onChange={e => onUpdateCamera({ focalLength: Number(e.target.value) })} /><output>{Math.round(camera.focalLength)} mm</output></label>
             <div className="focal-presets" aria-label="常用焦距">
               {FOCAL_LENGTH_PRESETS.map(value => <button type="button" key={value} className={Math.round(camera.focalLength) === value ? 'is-active' : ''} onClick={() => onUpdateCamera({ focalLength: value })}>{value}</button>)}
@@ -1007,18 +1136,16 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
               const [customWidth, customHeight] = customAspectParts(camera.aspectRatio)
               return <div className="custom-aspect-inputs"><span>自定义</span><input aria-label="自定义画幅宽" type="number" min="0.1" max="100" step="0.1" value={customWidth} onChange={event => onUpdateCamera({ aspectRatio: customAspectValue(event.target.value, customHeight) })} /><i>:</i><input aria-label="自定义画幅高" type="number" min="0.1" max="100" step="0.1" value={customHeight} onChange={event => onUpdateCamera({ aspectRatio: customAspectValue(customWidth, event.target.value) })} /></div>
             })()}
-          </div>
+          </InspectorSection>
         ) : selected.type === 'person' && selected.bodyType === 'minimal' ? (
-          <div className="inspector-section">
-            <div className="section-title"><span>人物</span><ChevronDown size={14} /></div>
+          <InspectorSection title="人物" collapsed={Boolean(collapsedSections.person)} onToggle={() => toggleSection('person')}>
             <label className="select-field"><span>体型</span><select value={selected.bodyType} onChange={e => onUpdateObject({ bodyType: e.target.value })}>{PERSON_BODY_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="text-field"><span>面部文字</span><input aria-label="极简模型面部文字" maxLength={5} placeholder="1-5 个字，可留空" value={selected.faceText || ''} onChange={event => onUpdateObject({ faceText: normalizeFaceText(event.target.value) })} /><output>{Array.from(selected.faceText || '').length}/5</output></label>
             <p className="pose-source-note">极简模型为静态占位：不参与动作、骨骼与表情，用于构图、朝向和面部文字标注。切回其他体型后会恢复原有动作设置。</p>
             <label className="color-field person-color-field"><span>人物颜色</span><input type="color" value={selected.color || '#e8e3d8'} onChange={e => onUpdateObject({ color: e.target.value })} /><output>{selected.color || '#e8e3d8'}</output></label>
-          </div>
+          </InspectorSection>
         ) : selected.type === 'person' ? (
-          <div className="inspector-section">
-            <div className="section-title"><span>人物</span><ChevronDown size={14} /></div>
+          <InspectorSection title="人物" collapsed={Boolean(collapsedSections.person)} onToggle={() => toggleSection('person')}>
             <label className="select-field"><span>体型</span><select value={selected.bodyType} onChange={e => onUpdateObject({ bodyType: e.target.value })}>{PERSON_BODY_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="select-field"><span>动作预设</span><select value={normalizePoseId(selected.pose)} onChange={e => applyPreset(e.target.value)}>{RIG_PRESET_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="range-field pose-time-field"><span>动作相位</span><input type="range" min="0" max="1" step="0.01" value={Number.isFinite(selected.poseTime) ? selected.poseTime : presetPhase(selected.pose)} onChange={e => onUpdateObject({ poseTime: Number(e.target.value) })} /><output>{Math.round((Number.isFinite(selected.poseTime) ? selected.poseTime : presetPhase(selected.pose)) * 100)}%</output></label>
@@ -1070,12 +1197,11 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
               ) : <p className="custom-pose-empty">还没有保存的姿势。调整骨骼后可存入本机姿势库。</p>}
             </div>
             <label className="color-field person-color-field"><span>人物颜色</span><input type="color" value={selected.color || '#e8e3d8'} onChange={e => onUpdateObject({ color: e.target.value })} /><output>{selected.color || '#e8e3d8'}</output></label>
-          </div>
+          </InspectorSection>
         ) : (
-          <div className="inspector-section">
-            <div className="section-title"><span>外观</span><ChevronDown size={14} /></div>
+          <InspectorSection title="外观" collapsed={Boolean(collapsedSections.appearance)} onToggle={() => toggleSection('appearance')}>
             <label className="color-field"><span>白模材质</span><input type="color" value={selected.color || '#d8d3c8'} onChange={e => onUpdateObject({ color: e.target.value })} /><output>{selected.color || '#d8d3c8'}</output></label>
-          </div>
+          </InspectorSection>
         )}
       </div>
     </aside>
@@ -1191,17 +1317,20 @@ function LightingPanel({ lighting, onChange, onClose }) {
 
 function CameraAnglePanel({ camera, onChange, onClose, onLevel }) {
   const rotation = Array.isArray(camera.rotation) ? camera.rotation : [0, 0, 0]
+  const rotationAxisLocks = normalizeAxisLocks(camera.rotationAxisLocks)
   const updateAxis = (axis, degrees) => {
+    if (rotationAxisLocks[axis]) return
     const next = [...rotation]
     next[axis] = Number(degrees) * Math.PI / 180
     onChange({ rotation: next })
   }
   const range = (label, axis, minimum, maximum) => {
     const degrees = Math.round((rotation[axis] || 0) * 180 / Math.PI)
+    const locked = rotationAxisLocks[axis]
     return (
-      <label className="camera-angle-range" key={label}>
+      <label className={`camera-angle-range ${locked ? 'is-axis-locked' : ''}`} key={label}>
         <span>{label}</span>
-        <input type="range" aria-label={`摄像机${label}`} min={minimum} max={maximum} step="1" value={degrees} onChange={event => updateAxis(axis, event.target.value)} />
+        <input type="range" aria-label={`摄像机${label}`} min={minimum} max={maximum} step="1" value={degrees} disabled={locked} title={locked ? `${label}轴已锁定，请先解锁` : undefined} onChange={event => updateAxis(axis, event.target.value)} />
         <output>{degrees}°</output>
       </label>
     )
@@ -1219,7 +1348,7 @@ function CameraAnglePanel({ camera, onChange, onClose, onLevel }) {
       </div>
       <div className="camera-angle-foot">
         <span>先用“翻滚”校正倾斜，再用俯仰和水平匹配参考图透视。</span>
-        <button type="button" onClick={onLevel}>水平归正</button>
+        <button type="button" onClick={onLevel} disabled={rotationAxisLocks[2]} title={rotationAxisLocks[2] ? '翻滚轴已锁定，请先解锁' : '将摄像机翻滚恢复为 0'}>水平归正</button>
       </div>
     </div>
   )
@@ -1595,7 +1724,7 @@ export default function App() {
     return framedObjects.map(object => objectDrafts[object.id] || object)
   }, [hasObjectAnimation, objects, characterKeyframes, currentFrame, fps, objectDrafts])
   const animatedCamera = useMemo(() => {
-    const base = keyframes.length ? cameraAtFrame(keyframes, currentFrame, camera.aspectRatio) : camera
+    const base = keyframes.length ? cameraAtFrame(keyframes, currentFrame, camera.aspectRatio, camera) : camera
     const keyFollow = base.followEnabled === true ? {
       enabled: true,
       targetId: base.followTargetId,
@@ -1785,24 +1914,24 @@ export default function App() {
     setObjectDrafts({})
     setCurrentFrame(nextFrame)
     currentFrameRef.current = nextFrame
-    if (keyframes.length) setCamera(cameraAtFrame(keyframes, nextFrame, camera.aspectRatio))
-  }, [keyframes, camera.aspectRatio, totalFrames])
+    if (keyframes.length) setCamera(current => cameraAtFrame(keyframes, nextFrame, current.aspectRatio, current))
+  }, [keyframes, totalFrames])
 
   const togglePlayback = useCallback(() => {
     setPlaying(wasPlaying => {
       if (wasPlaying) {
         const pausedFrame = currentFrameRef.current
-        if (keyframes.length) setCamera(cameraAtFrame(keyframes, pausedFrame, camera.aspectRatio))
+        if (keyframes.length) setCamera(current => cameraAtFrame(keyframes, pausedFrame, current.aspectRatio, current))
       }
       if (!wasPlaying && currentFrameRef.current >= totalFrames) {
         setCurrentFrame(0)
         currentFrameRef.current = 0
-        if (keyframes.length) setCamera(cameraAtFrame(keyframes, 0, camera.aspectRatio))
+        if (keyframes.length) setCamera(current => cameraAtFrame(keyframes, 0, current.aspectRatio, current))
       }
       if (!wasPlaying) setObjectDrafts({})
       return !wasPlaying
     })
-  }, [keyframes, camera.aspectRatio, totalFrames])
+  }, [keyframes, totalFrames])
 
   useEffect(() => {
     if (!playing) { playStartRef.current = null; return }
@@ -1817,7 +1946,7 @@ export default function App() {
         } else {
           setCurrentFrame(totalFrames)
           currentFrameRef.current = totalFrames
-          if (keyframes.length) setCamera(cameraAtFrame(keyframes, totalFrames, camera.aspectRatio))
+          if (keyframes.length) setCamera(current => cameraAtFrame(keyframes, totalFrames, current.aspectRatio, current))
           setPlaying(false)
           return
         }
@@ -1828,7 +1957,7 @@ export default function App() {
     }
     frameId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(frameId)
-  }, [playing, keyframes, camera.aspectRatio, fps, totalFrames, settings.loopPlayback])
+  }, [playing, keyframes, fps, totalFrames, settings.loopPlayback])
 
   useEffect(() => {
     const onKeyDown = event => {
@@ -2121,18 +2250,47 @@ export default function App() {
   const updateSelected = patch => updateObjectById(selectedId, patch)
   const groundSelected = () => {
     if (!activeObject || activeObject.locked) return
+    if (normalizeAxisLocks(activeObject.positionAxisLocks)[1]) { setToast('Y 轴已锁定，请先解锁'); return }
     setGroundRequest({ id: activeObject.id, nonce: Date.now() })
     setToast('已按模型最低点落到地面')
   }
-  const resetSelectedRotation = () => {
+  const resetSelectedPosition = () => {
+    if (selectedId === CAMERA_ID) {
+      const locks = normalizeAxisLocks(camera.positionAxisLocks)
+      if (locks.every(Boolean)) { setToast('摄像机位置轴已全部锁定'); return }
+      updateCameraFromUI({ position: resetVectorPreservingLocks(DEFAULT_CAMERA_POSITION, camera.position, locks) })
+      setToast(locks.some(Boolean) ? '摄像机机位已复位 · 锁定轴保持' : '摄像机已恢复默认机位')
+      return
+    }
     if (!activeObject || activeObject.locked) return
-    updateSelected({ rotation: [0, 0, 0] })
-    setToast('整体旋转已归零')
+    const currentObject = animatedObjects.find(object => object.id === selectedId) || activeObject
+    const locks = normalizeAxisLocks(currentObject.positionAxisLocks)
+    if (locks.every(Boolean)) { setToast('位置轴已全部锁定'); return }
+    updateSelected({ position: resetVectorPreservingLocks([0, 0, 0], currentObject.position, locks) })
+    setToast(locks.some(Boolean) ? '位置已归零 · 锁定轴保持' : '位置已归零')
+  }
+  const resetSelectedRotation = () => {
+    if (selectedId === CAMERA_ID) {
+      const locks = normalizeAxisLocks(camera.rotationAxisLocks)
+      if (locks.every(Boolean)) { setToast('摄像机旋转轴已全部锁定'); return }
+      updateCameraFromUI({ rotation: resetVectorPreservingLocks(DEFAULT_CAMERA_ROTATION, camera.rotation, locks) })
+      setToast(locks.some(Boolean) ? '摄像机旋转已复位 · 锁定轴保持' : '摄像机已恢复默认朝向')
+      return
+    }
+    if (!activeObject || activeObject.locked) return
+    const currentObject = animatedObjects.find(object => object.id === selectedId) || activeObject
+    const locks = normalizeAxisLocks(currentObject.rotationAxisLocks)
+    if (locks.every(Boolean)) { setToast('旋转轴已全部锁定'); return }
+    updateSelected({ rotation: resetVectorPreservingLocks([0, 0, 0], currentObject.rotation, locks) })
+    setToast(locks.some(Boolean) ? '旋转已归零 · 锁定轴保持' : (activeObject.type === 'person' ? '整体旋转已归零' : '旋转已归零'))
   }
   const resetSelectedScale = () => {
     if (!activeObject || activeObject.locked) return
-    updateSelected({ scale: [1, 1, 1] })
-    setToast('整体缩放已恢复为 1')
+    const currentObject = animatedObjects.find(object => object.id === selectedId) || activeObject
+    const locks = normalizeAxisLocks(currentObject.scaleAxisLocks)
+    if (locks.every(Boolean)) { setToast('缩放轴已全部锁定'); return }
+    updateSelected({ scale: resetVectorPreservingLocks([1, 1, 1], currentObject.scale, locks) })
+    setToast(locks.some(Boolean) ? '缩放已归一 · 锁定轴保持' : '整体缩放已恢复为 1')
   }
   const captureEditorView = useCallback(view => {
     if (view?.position?.length === 3 && view?.rotation?.length === 3 && view?.target?.length === 3) editorViewRef.current = view
@@ -2146,6 +2304,7 @@ export default function App() {
     setCameraAnglePanelOpen(false)
   }
   const levelCameraHorizon = () => {
+    if (normalizeAxisLocks(camera.rotationAxisLocks)[2]) { setToast('翻滚轴已锁定，请先解锁'); return }
     setCamera(current => {
       const rotation = Array.isArray(current.rotation) ? [...current.rotation] : [0, 0, 0]
       rotation[2] = 0
@@ -2373,7 +2532,7 @@ export default function App() {
     setKeyframes(nextKeyframes)
     setCurrentFrame(frame)
     // Keep the viewport and camera monitor on the keyframe being edited, exactly like seeking.
-    setCamera(cameraAtFrame(nextKeyframes, frame, camera.aspectRatio))
+    setCamera(current => cameraAtFrame(nextKeyframes, frame, current.aspectRatio, current))
   }
   const deleteSelectedKeyframe = () => {
     if (!selectedKeyframeInfo) return
@@ -2443,7 +2602,7 @@ export default function App() {
     exportLockRef.current = true
     const nextExportFrameCount = totalFrames
     const originalFrame = currentFrameRef.current
-    const originalCamera = keyframes.length ? cameraAtFrame(keyframes, originalFrame, camera.aspectRatio) : camera
+    const originalCamera = keyframes.length ? cameraAtFrame(keyframes, originalFrame, camera.aspectRatio, camera) : camera
     let output
 
     setPlaying(false)
@@ -2703,7 +2862,7 @@ export default function App() {
             </div>}
           </div>
         </section>
-        <Inspector selected={inspectorSelected} camera={camera} objects={objects} selectedJoint={selectedJoint} customPoses={customPoses} onSelectJoint={setSelectedJoint} onUpdateObject={updateSelected} onUpdateCamera={updateCameraFromUI} onDelete={deleteSelected} onDuplicate={duplicateSelected} onFocus={focusSelected} onToggleLock={() => activeObject && updateSelected({ locked: !activeObject.locked })} onGround={groundSelected} onResetRotation={resetSelectedRotation} onResetScale={resetSelectedScale} onSaveCustomPose={saveCustomPose} onApplyCustomPose={applyCustomPose} onDeleteCustomPose={deleteCustomPose} />
+        <Inspector selected={inspectorSelected} camera={camera} objects={objects} selectedJoint={selectedJoint} customPoses={customPoses} onSelectJoint={setSelectedJoint} onUpdateObject={updateSelected} onUpdateCamera={updateCameraFromUI} onDelete={deleteSelected} onDuplicate={duplicateSelected} onFocus={focusSelected} onToggleLock={() => activeObject && updateSelected({ locked: !activeObject.locked })} onGround={groundSelected} onResetPosition={resetSelectedPosition} onResetRotation={resetSelectedRotation} onResetScale={resetSelectedScale} onSaveCustomPose={saveCustomPose} onApplyCustomPose={applyCustomPose} onDeleteCustomPose={deleteCustomPose} />
         <Timeline
           currentFrame={currentFrame}
           fps={fps}

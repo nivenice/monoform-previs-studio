@@ -41,7 +41,7 @@ MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭
 | `server/server.py` | 可选 AI 服务（仅标准库）；`server/perspective_prompt.py` 是场景提示词 |
 | `tests/*.test.mjs` | Node 原生测试，只覆盖上面的纯逻辑模块 |
 | `scripts/` | 动画烘焙脚本；`scripts/assets/` 存固定版本的源资产 |
-| `public/` | 运行时静态资源（模型、品牌图、教程视频），必须经 `import.meta.env.BASE_URL` 引用 |
+| `public/` | 运行时静态资源（模型、品牌图），必须经 `import.meta.env.BASE_URL` 引用 |
 | `.github/workflows/deploy-pages.yml` | push 到 `master` 时 `npm ci` + `npm run build` → GitHub Pages |
 | `docs/` | 用户手册与界面截图 |
 
@@ -90,10 +90,10 @@ MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭
 
 ## 发布与仓库状态
 
-- 默认分支是 `master`（由 `main` 合并 `develop` 后建立）；上线 = 合入 `master` 并 push，Actions 构建后发布到 GitHub Pages。日常开发常在 `develop`，不要直接向 `master` 强推。
+- 发布分支是 `master`（由 `main` 合并 `develop` 后建立）；上线 = 合入 `master` 并 push，Actions 构建后发布到 GitHub Pages。日常开发常在 `develop`，不要直接向 `master` 强推。
 - `package-lock.json` 是 CI 使用的锁文件；`pnpm-lock.yaml` 已随 `develop` 进入仓库，但 CI 仍以 npm 锁文件为准。
 - 本仓库 `origin` 指向 `nivenice/monoform-previs-studio`，`upstream` 是原作者仓库 `GuiYi-Xi/monoform-previs-studio`；README 开头保留了原仓库地址说明。
-- 替换模型或视频资产时，同步更新 `public/models/ANIMATION_SOURCES.md` 的出处与许可证，并保留 `scripts/assets/` 里的固定源文件，保证可离线重建。
+- 替换模型资产时，同步更新 `public/models/ANIMATION_SOURCES.md` 的出处与许可证，并保留 `scripts/assets/` 里的固定源文件，保证可离线重建。
 
 ## 相关文档
 

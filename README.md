@@ -1,5 +1,7 @@
 # MONOFORM · 素形白模预演工作台
 
+> **原仓库说明**：本仓库派生自 [GuiYi-Xi/monoform-previs-studio](https://github.com/GuiYi-Xi/monoform-previs-studio)，原仓库地址：https://github.com/GuiYi-Xi/monoform-previs-studio。
+
 MONOFORM 是一款面向分镜、构图和镜头预演的轻量三维白模工作台。它直接运行在浏览器中，可搭建场景、摆放带骨骼人物、管理多个独立镜头、制作人物与摄像机关键帧，并导出 PNG、MP4 或可迁移的工程 JSON。
 
 ## 产品概览
@@ -13,7 +15,7 @@ MONOFORM 不把生成式 AI 当作最终成片工具。可选的本地 AI 服务
 
 ## 在线使用
 
-### [立即打开 MONOFORM](https://guiyi-xi.github.io/monoform-previs-studio/)
+### [立即打开 MONOFORM](https://nivenice.github.io/monoform-previs-studio/)
 
 完整功能说明请查看：[MONOFORM 使用说明](docs/USER_GUIDE.md)
 
@@ -23,11 +25,11 @@ MONOFORM 不把生成式 AI 当作最终成片工具。可选的本地 AI 服务
 
 ## 视频教学
 
-[![点击观看 MONOFORM 录屏教学](docs/screenshots/monoform-video-cover.jpg)](https://guiyi-xi.github.io/monoform-previs-studio/tutorial/monoform-getting-started.mp4)
+[![点击观看 MONOFORM 录屏教学](docs/screenshots/monoform-video-cover.jpg)](https://nivenice.github.io/monoform-previs-studio/tutorial/monoform-getting-started.mp4)
 
 点击上方封面即可播放新版录屏教学。视频时长约 8 分 11 秒，包含声音；如果浏览器没有自动播放，可使用下面的链接直接打开或下载。
 
-[播放或下载教学录屏 MP4](https://guiyi-xi.github.io/monoform-previs-studio/tutorial/monoform-getting-started.mp4)
+[播放或下载教学录屏 MP4](https://nivenice.github.io/monoform-previs-studio/tutorial/monoform-getting-started.mp4)
 
 ## 界面说明
 
@@ -89,7 +91,7 @@ MONOFORM 不把生成式 AI 当作最终成片工具。可选的本地 AI 服务
 
 AI 功能依赖项目内的本地 Python 服务和用户自己的兼容模型服务。它不是在线版的必需组件：没有 Python、模型配置或网络时，普通搭景、动画和导出仍可使用。
 
-1. 使用项目启动器启动工作台；启动器会尝试在 `127.0.0.1:8891` 启动 AI 服务。
+1. 可选：在本机运行 `python server/server.py` 启动 AI 服务（监听 `127.0.0.1:8891`）；不启动也不影响普通编辑、动画和导出。
 2. 在「AI 场景」面板的设置中填写兼容 OpenAI Chat Completions 的服务地址、模型名称和 API 密钥，或在本机配置 `server/model-config.local.json`。
 3. 选择「参考图生成场景」「文字生成场景」「生成姿势」或「生成物体」。
 4. 检查模型返回的结构、比例和相机证据，再导入画布继续修改。
@@ -156,16 +158,14 @@ API 密钥只用于本机调用模型服务，配置文件已被 Git 忽略；�
 
 ## 下载源码并在本地运行
 
-在 GitHub 页面点击 `Code` → `Download ZIP`，**先完整解压 ZIP**，再双击 `启动白模工具.cmd`。不需要提前安装 Node.js：启动器会在项目内部准备免管理员运行环境，并自动安装所需组件。首次启动需要保持网络连接，之后可直接启动。
-
-如果网络或安装出现问题，启动窗口会保留具体错误信息并自动打开在线版，不会再直接闪退。请不要在压缩包预览窗口里直接双击启动器。
-
-开发方式：
+需要先安装 Node.js 22 或更新版本，然后在本目录执行：
 
 ```powershell
 npm install
 npm run dev
 ```
+
+开发服务器默认运行在 `127.0.0.1:5173`。
 
 生成正式版本：
 
@@ -174,11 +174,7 @@ npm run build
 npm run preview
 ```
 
-### 本地启动时检查更新
-
-从 Git 克隆的项目目录双击 `启动白模工具.cmd` 时，启动器会先检查 `origin/main`。只有当前目录是干净的 `main` 分支、远程检查成功并且确实有新提交时，才会弹出更新确认框。确认后执行快进拉取并自动重启；选择取消、网络检查失败、仓库不是 Git 克隆，或本地存在未提交改动时，都会直接继续启动当前版本，不会覆盖本地文件。
-
-如果项目是通过 GitHub 的 `Download ZIP` 下载的，目录没有 Git 历史，启动器无法自动拉取更新；请重新下载最新 ZIP，或改用 Git 克隆。
+也可以直接在 GitHub 页面点击 `Code` → `Download ZIP`，解压后按上面的命令安装依赖并启动。
 
 ## 主要功能
 

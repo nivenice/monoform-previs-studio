@@ -19,7 +19,6 @@ MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭
 | 跑单个测试文件 | `node tests/cameraMotion.test.mjs` | runner 无法 spawn 子进程时的替代跑法 |
 | 重建骨骼动画 | `npm run build:animations` | 用 `scripts/assets/` 里的固定源文件重写 `public/models/xbot-animated.glb` |
 | 本机 AI 服务 | `python server/server.py` | `127.0.0.1:8891`，可选；无前端 dev server 时同时托管 `dist/` |
-| Windows 一键启动 | `启动白模工具.cmd` | 转调 `scripts/launch-windows.ps1`：便携 Node、`npm ci`、检查 `origin/main` 更新后启动 |
 
 依赖安装遵循锁文件 `package-lock.json`（`npm ci`）。README 面向用户，`docs/USER_GUIDE.md` 是操作手册。
 
@@ -41,9 +40,9 @@ MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭
 | `src/styles.css` | 全局样式；深色主题色值集中在 `:root` 变量 |
 | `server/server.py` | 可选 AI 服务（仅标准库）；`server/perspective_prompt.py` 是场景提示词 |
 | `tests/*.test.mjs` | Node 原生测试，只覆盖上面的纯逻辑模块 |
-| `scripts/` | Windows 启动器、动画烘焙脚本；`scripts/assets/` 存固定版本的源资产 |
+| `scripts/` | 动画烘焙脚本；`scripts/assets/` 存固定版本的源资产 |
 | `public/` | 运行时静态资源（模型、品牌图、教程视频），必须经 `import.meta.env.BASE_URL` 引用 |
-| `.github/workflows/deploy-pages.yml` | push 到 `main` 时 `npm ci` + `npm run build` → GitHub Pages |
+| `.github/workflows/deploy-pages.yml` | push 到 `master` 时 `npm ci` + `npm run build` → GitHub Pages |
 | `docs/` | 用户手册与界面截图 |
 
 ## 改代码前必须守住的不变量
@@ -91,9 +90,9 @@ MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭
 
 ## 发布与仓库状态
 
-- 上线 = 合入 `main` 并 push；Actions 构建后发布到 GitHub Pages。日常开发常在 `develop`，不要直接向 `main` 强推。
-- `package-lock.json` 是 CI 与启动器使用的锁文件；`pnpm-lock.yaml` 目前未被 Git 跟踪，不要提交，除非有意把整个仓库切到 pnpm 并同步修改 CI 与启动器。
-- 启动器的更新检查只认 `origin` = `GuiYi-Xi/monoform-previs-studio`、分支 `main`、工作区干净；本仓库 `origin` 指向 `nivenice/monoform-previs-studio`（`upstream` 才是原作者仓库），所以本地启动器会跳过自动更新。修改启动器时不要破坏“检查失败/拒绝更新则继续启动”的回退逻辑。
+- 默认分支是 `master`（由 `main` 合并 `develop` 后建立）；上线 = 合入 `master` 并 push，Actions 构建后发布到 GitHub Pages。日常开发常在 `develop`，不要直接向 `master` 强推。
+- `package-lock.json` 是 CI 使用的锁文件；`pnpm-lock.yaml` 已随 `develop` 进入仓库，但 CI 仍以 npm 锁文件为准。
+- 本仓库 `origin` 指向 `nivenice/monoform-previs-studio`，`upstream` 是原作者仓库 `GuiYi-Xi/monoform-previs-studio`；README 开头保留了原仓库地址说明。
 - 替换模型或视频资产时，同步更新 `public/models/ANIMATION_SOURCES.md` 的出处与许可证，并保留 `scripts/assets/` 里的固定源文件，保证可离线重建。
 
 ## 相关文档

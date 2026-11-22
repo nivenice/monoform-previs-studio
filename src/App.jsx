@@ -7,6 +7,7 @@ import {
   Unlock,
 } from 'lucide-react'
 import { MainViewport, CameraPreview } from './Viewport.jsx'
+import { api } from './api.js'
 import { sceneToMonoform } from './sceneToMonoform.js'
 import { pathToKeys } from './previsMotion.js'
 import { CAMERA_SHOT_PRESETS, shotPreset, solveFollowCamera } from './cameraMotion.js'
@@ -51,6 +52,9 @@ const PERSON_BODY_TYPES = [
   ['minimal', '极简模型'],
 ]
 const BRAND_MARK_URL = `${import.meta.env.BASE_URL}branding/monoform-mark.png`
+// Electron hides the native title bar on Windows/Linux and overlays the native
+// caption buttons on the right edge; leave room for them and make the topbar draggable.
+const HAS_CUSTOM_TITLEBAR = typeof window !== 'undefined' && Boolean(window.monoform) && window.monoform.platform !== 'darwin'
 const ASPECT_RATIOS = [
   { value: '16:9', label: '16 : 9 · 横屏视频', ratio: 16 / 9 },
   { value: '9:16', label: '9 : 16 · 竖屏短视频', ratio: 9 / 16 },
@@ -105,7 +109,7 @@ async function fetchJsonResponse(url, options = {}, fallbackMessage = '请求失
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal })
+    const response = await api.fetch(url, { ...options, signal: controller.signal })
     return await readJsonResponse(response, fallbackMessage)
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error(`${fallbackMessage}（${Math.round(timeoutMs / 1000)} 秒超时）`)
@@ -912,7 +916,7 @@ function ModelSettingsPanel() {
     fetchJsonResponse('/api/model-config', {}, '本地识图服务不可用').then(data => {
       if (!active) return
       setConfig(data); setBaseUrl(data.baseUrl || ''); setModel(data.model || '')
-    }).catch(() => { if (active) setStatus('本地识图服务未启动；请用项目启动器打开工作台') })
+    }).catch(error => { if (active) setStatus(error?.message || '本地识图服务不可用；桌面版会自动启动，浏览器版请运行 npm run server') })
     return () => { active = false }
   }, [])
   const requestModels = async () => {
@@ -922,7 +926,7 @@ function ModelSettingsPanel() {
         const data = await fetchJsonResponse('/api/model-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'base-url': baseUrl.trim(), 'api-key': apiKey.trim(), model: model.trim() || config.model || '' }) }, '保存 API 配置失败，请检查本地识图服务')
         setConfig(data); setApiKey('')
       }
-      const data = await fetchJsonResponse('/api/models', {}, '拉取模型失败，请检查本地识图服务和 API 地址', 45000)
+      const data = await fetchJsonResponse('/api/models', {}, '拉取模型失败，请检查本地识图服务和 API 地址', 100000)
       if (!Array.isArray(data.models)) throw new Error('模型服务返回的列表格式无效')
       setModels(data.models)
       setStatus(`已拉取 ${data.models.length} 个模型 · 选择后点击确认`)
@@ -2189,11 +2193,11 @@ export default function App() {
       const timeout = setTimeout(() => controller.abort(), 600000)
       let response
       try {
-        const healthResponse = await fetch('/api/health', { signal: controller.signal })
-        if (!healthResponse.ok) throw new Error('本地场景识别服务不可用；请从项目启动脚本打开工作台')
+        const healthResponse = await api.fetch('/api/health', { signal: controller.signal })
+        if (!healthResponse.ok) throw new Error('本地场景识别服务不可用；桌面版会自动启动，浏览器版请运行 npm run server')
         const health = await readJsonResponse(healthResponse, '本地场景识别服务返回无效响应')
         if (!health.modelConfigured) throw new Error('场景识别服务未配置模型；请检查服务端 model-key.txt')
-        response = await fetch('/api/generate-scene', { method: 'POST', body: payload, signal: controller.signal })
+        response = await api.fetch('/api/generate-scene', { method: 'POST', body: payload, signal: controller.signal })
       } finally {
         clearTimeout(timeout)
       }
@@ -2211,7 +2215,9 @@ export default function App() {
       setSceneReport(report)
       setToast(report)
     } catch (error) {
-      const reason = error.name === 'AbortError' ? '识别超时（10 分钟），请重试或换一张较清晰的图' : error.message || '生成失败'
+      const reason = error.name === 'AbortError'
+        ? '识别超时（10 分钟），请重试或换一张较清晰的图'
+        : (error instanceof TypeError ? '本地识图服务不可用；桌面版会自动启动，浏览器版请运行 npm run server' : error.message || '生成失败')
       setSceneReport(`未导入：${reason}`)
       setToast(reason)
     } finally {
@@ -2744,7 +2750,7 @@ export default function App() {
   }
 
   return (
-    <main className={`app-shell ${drawRoute ? 'is-route-mode' : ''}`} aria-busy={exporting || capturingImage}>
+    <main className={`app-shell ${drawRoute ? 'is-route-mode' : ''} ${HAS_CUSTOM_TITLEBAR ? 'has-custom-titlebar' : ''}`} aria-busy={exporting || capturingImage}>
       <header className="topbar">
         <div className="brand-mark">
           <span className="brand-glyph"><img src={BRAND_MARK_URL} alt="" /></span>

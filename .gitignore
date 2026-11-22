@@ -1,11 +1,13 @@
 node_modules/
 dist/
+out/
+release/
+*.tsbuildinfo
 .monoform-runtime/
 .playwright-cli/
 output/
 *.log
 api.txt
 server/model-config.local.json
-server/__pycache__/
 qa-baseline-before-camera-relative/
 NUL

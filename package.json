@@ -2,12 +2,27 @@
   "name": "monoform-previs-studio",
   "private": true,
   "version": "0.6.0",
+  "description": "MONOFORM · 素形白模预演工作台",
+  "main": "./out/main/index.js",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
-    "dev": "vite",
+    "dev": "electron-vite dev",
+    "dev:web": "vite",
+    "server": "tsx server/standalone.ts",
+    "build": "npm run typecheck && electron-vite build",
+    "build:web": "vite build",
     "build:animations": "node scripts/build-daily-animations.mjs",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "electron-vite preview",
+    "preview:web": "vite preview",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit",
+    "test:node": "node --test",
+    "test:server": "tsx --test tests/server/scene.spec.ts tests/server/config.spec.ts tests/server/http.spec.ts tests/server/upstream.spec.ts",
+    "test": "npm run test:node && npm run test:server"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -19,7 +34,18 @@
     "three": "^0.170.0"
   },
   "devDependencies": {
+    "@types/node": "^24.9.0",
     "@vitejs/plugin-react": "^6.0.5",
+    "electron": "^40.10.6",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
     "vite": "^8.2.0"
+  },
+  "allowScripts": {
+    "electron@40.10.6": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.28.2": true
   }
 }

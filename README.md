@@ -2,7 +2,7 @@
 
 > **原仓库说明**：本仓库派生自 [GuiYi-Xi/monoform-previs-studio](https://github.com/GuiYi-Xi/monoform-previs-studio)，原仓库地址：https://github.com/GuiYi-Xi/monoform-previs-studio。
 
-MONOFORM 是一款面向分镜、构图和镜头预演的轻量三维白模工作台。它直接运行在浏览器中，可搭建场景、摆放带骨骼人物、管理多个独立镜头、制作人物与摄像机关键帧，并导出 PNG、MP4 或可迁移的工程 JSON。
+MONOFORM 是一款面向分镜、构图和镜头预演的轻量三维白模工作台。它提供 Electron 桌面应用，同时保留可直接部署到 GitHub Pages 的浏览器版本；可搭建场景、摆放带骨骼人物、管理多个独立镜头、制作人物与摄像机关键帧，并导出 PNG、MP4 或可迁移的工程 JSON。
 
 ## 产品概览
 
@@ -23,10 +23,18 @@ MONOFORM 不把生成式 AI 当作最终成片工具。可选的本地 AI 服务
 
 ![MONOFORM 完整工作台](docs/screenshots/monoform-overview.png)
 
+## 桌面版下载
+
+[下载 MONOFORM v0.6.0 Windows 安装包](<downloads/MONOFORM-0.6.0-win-x64-setup.exe>)（Windows 10/11 x64，约 93 MB）
+
+安装包已随仓库提交，可直接点击下载；SHA-256 校验值见 [downloads/SHA256SUMS.txt](downloads/SHA256SUMS.txt)。
+
+> 安装包未做代码签名，Windows SmartScreen 可能提示“未知发布者”，选择“更多信息 → 仍要运行”即可；安装位置和是否创建桌面快捷方式可在安装向导中调整。
+
 ## 界面说明
 
 - 左侧「资源库」：添加人物、基础几何体、拱门、楼梯、门窗、家具、树木、车辆等场景粗模，或导入 GLB / GLTF 模型。
-- 左侧「AI 场景」：在本地 AI 服务已启动并配置模型时，可用文字或参考图生成白模场景、人物姿势和物体，并将结果转成可继续编辑的对象。
+- 左侧「AI 场景」：桌面版会自动启动本机 AI 服务；配置模型后，可用文字或参考图生成白模场景、人物姿势和物体，并将结果转成可继续编辑的对象。浏览器版需要先运行 `npm run server`。
 - 左侧「场景层级」：选择、显隐、锁定场景物体；选中后可在右侧重命名、复制、删除或聚焦。
 - 左侧「镜头」：新建、复制、重命名、删除和切换镜头，并显示真实摄像机缩略图。
 - 中央「透视视图」：搭建三维场景、选择物体、调整观察角度，也可叠加一张动作或构图参考图。
@@ -77,18 +85,18 @@ MONOFORM 不把生成式 AI 当作最终成片工具。可选的本地 AI 服务
 6. 参考图按镜头保存，切换镜头后可使用不同图片；新建镜头参考图为空，复制镜头会一并复制参考图。
 7. 勾选「进入导出」后，参考图会作为最底层背景进入 PNG 和 MP4；关闭时只用于编辑对照，不进入成片。
 
-上传图片默认只作为浏览器内的人工摆姿参考。只有用户主动打开本地 AI 场景功能时，图片才会发送到用户配置的模型服务；大图会在浏览器中自动压缩后写入工程。
+上传图片默认只作为本机的人工摆姿参考。只有用户主动打开本地 AI 场景功能时，图片才会发送到用户配置的模型服务；大图会在客户端自动压缩后写入工程。
 
 ### 使用 AI 生成场景（可选）
 
-AI 功能依赖项目内的本地 Python 服务和用户自己的兼容模型服务。它不是在线版的必需组件：没有 Python、模型配置或网络时，普通搭景、动画和导出仍可使用。
+AI 功能依赖项目内的 Node + TypeScript 本地服务和用户自己的兼容模型服务。它不是成片流程的必需组件：没有模型配置或网络时，普通搭景、动画和导出仍可使用。
 
-1. 可选：在本机运行 `python server/server.py` 启动 AI 服务（监听 `127.0.0.1:8891`）；不启动也不影响普通编辑、动画和导出。
-2. 在「AI 场景」面板的设置中填写兼容 OpenAI Chat Completions 的服务地址、模型名称和 API 密钥，或在本机配置 `server/model-config.local.json`。
-3. 选择「参考图生成场景」「文字生成场景」「生成姿势」或「生成物体」。
-4. 检查模型返回的结构、比例和相机证据，再导入画布继续修改。
+1. 桌面版：直接打开应用即可，本地 AI 服务会随 Electron 主进程自动启动（只监听 `127.0.0.1` 的随机端口）。
+2. 浏览器版：另开终端运行 `npm run server` 启动独立服务（默认 `127.0.0.1:8891`），再使用 `npm run dev:web` 或 `npm run preview:web`。
+3. 在「AI 场景」面板的设置中填写兼容 OpenAI Chat Completions 的服务地址、模型名称和 API 密钥，或在本机配置 `server/model-config.local.json`。
+4. 选择「参考图生成场景」「文字生成场景」「生成姿势」或「生成物体」，检查模型返回的结构、比例和相机证据，再导入画布继续修改。
 
-API 密钥只用于本机调用模型服务，配置文件已被 Git 忽略；不要把密钥写进工程 JSON、源码或截图。
+API 密钥只用于本机调用模型服务：开发时写入已被 Git 忽略的 `server/model-config.local.json`，桌面安装版写入应用数据目录的 `model-config.json`；不要把密钥写进工程 JSON、源码或截图。旧浏览器工程不会和桌面版自动共享本地存储，请用「导出工程 / 打开工程」迁移。
 
 ### 3. 设置摄像机
 
@@ -130,7 +138,7 @@ API 密钥只用于本机调用模型服务，配置文件已被 Git 忽略；�
 
 ### 6. 保存与导出
 
-- 「保存」：立即把当前工程写入浏览器本地存储；平时编辑时也会自动保存。
+- 「保存」：立即把当前工程写入本机存储；平时编辑时也会自动保存。
 - 「打开」：载入之前通过「导出工程」保存的 JSON 工程文件。
 - 「截图 PNG」：导出当前帧的摄像机画面，并自动匹配画面比例。
 - 「导出 MP4」：严格按时间轴的帧率、时长和画幅编码 MP4，横竖屏不会被拉伸。
@@ -150,23 +158,117 @@ API 密钥只用于本机调用模型服务，配置文件已被 Git 忽略；�
 
 ## 下载源码并在本地运行
 
-需要先安装 Node.js 22 或更新版本，然后在本目录执行：
+需要先安装 Node.js 20.19 或更新版本（推荐 22 LTS / 24），然后在本目录执行：
 
 ```powershell
 npm install
+```
+
+本仓库根目录的 `.npmrc` 已将 npm registry 指向 npmmirror（淘宝源）；如需恢复官方源，删除或修改该文件。仓库同时支持 pnpm：`pnpm-workspace.yaml` 已把 electron / electron-winstaller / esbuild 加入 `allowBuilds` 白名单，避免 `pnpm install` 报 `ERR_PNPM_IGNORED_BUILDS`。
+
+如果终端里设置了 `ELECTRON_RUN_AS_NODE`（某些测试或自动化环境会设置），Electron 会以纯 Node 模式启动并报 `does not provide an export named 'BrowserWindow'`；运行桌面版前请清除它：
+
+```powershell
+Remove-Item Env:ELECTRON_RUN_AS_NODE
+```
+
+启动桌面版：
+
+```powershell
 npm run dev
 ```
 
-开发服务器默认运行在 `127.0.0.1:5173`。
+`npm run dev` 会打开 Electron 窗口并自动启动本机 AI 服务；渲染层仍支持 Vite HMR。
 
-生成正式版本：
+构建并预览桌面生产版本（使用 `app://` 加载）：
 
 ```powershell
 npm run build
-npm run preview
+npm run start
+```
+
+打包 Windows 安装包（产物在 `release/`）：
+
+```powershell
+npm run dist:win
+```
+
+打包脚本复用 `node_modules/electron/dist` 中已安装的 Electron，不会重复下载运行时。如果 electron-builder 下载 NSIS/签名工具很慢，可设置 `ELECTRON_BUILDER_BINARIES_MIRROR`（例如 `https://npmmirror.com/mirrors/electron-builder-binaries/`）后再执行打包。
+
+浏览器版：
+
+```powershell
+npm run dev:web        # 开发，127.0.0.1:5173
+npm run build:web      # 构建到 dist/
+npm run preview:web    # 预览构建产物
+npm run server         # 可选：浏览器版 AI 服务，127.0.0.1:8891
 ```
 
 也可以直接在 GitHub 页面点击 `Code` → `Download ZIP`，解压后按上面的命令安装依赖并启动。
+
+## Electron 桌面版与打包
+
+### 项目形态
+
+本仓库已从纯浏览器项目改造为 Electron 桌面项目，同时保留浏览器构建：
+
+- `electron/main`：主进程、`app://monoform` 内容协议、窗口与自定义标题栏、本机 AI 服务生命周期。
+- `electron/preload`：通过 `contextBridge` 只暴露最小运行时 API。
+- `src/`：React + Three.js 渲染层，桌面版和浏览器版共用。
+- `server/`：Node + TypeScript AI 服务；桌面版由主进程自动启动，浏览器版通过 `npm run server` 启动。
+- 桌面版使用 `app://` 而不是 `file://` 加载渲染层，保证 GLB、动态 import chunk 和 Web Worker 可以正常 fetch。
+- 标题栏使用 Electron `titleBarStyle: 'hidden'` + `titleBarOverlay`，顶栏与窗口按钮统一深色主题；macOS 保留原生标题栏。
+- `out/` 是 electron-vite 桌面构建产物，`dist/` 是浏览器构建产物，`release/` 是本地打包产物（三者都已 gitignore）。
+
+### 打包环境
+
+| 项目 | 要求 |
+| --- | --- |
+| 操作系统 | Windows 10 / 11 x64（当前只配置 NSIS；macOS / Linux 安装包未配置） |
+| Node.js | `>=20.19.0`（推荐 22 LTS / 24） |
+| 包管理器 | npm 10+ 或 pnpm 11 |
+| Electron | 40.10.x；41+ 的安装依赖要求 Node 22.12，会破坏 Node 20 兼容 |
+| 打包工具 | electron-builder 26.18.x；首次打包会自动下载 NSIS / 7zip 工具 |
+| 代码签名 | 未配置，安装包未签名 |
+| 应用图标 / 更新 | 使用默认 Electron 图标，暂无自动更新 |
+
+首次打包如果 NSIS 工具下载较慢，可先设置镜像：
+
+```powershell
+$env:ELECTRON_BUILDER_BINARIES_MIRROR = 'https://npmmirror.com/mirrors/electron-builder-binaries/'
+```
+
+打包会复用 `node_modules/electron/dist`，不会重复下载 Electron 运行时；仓库根目录的 `.npmrc` 也已指向 npmmirror。
+
+### 如何打包
+
+使用 npm：
+
+```powershell
+npm ci
+npm run dist:win
+```
+
+使用 pnpm：
+
+```powershell
+pnpm install
+pnpm run dist:win
+```
+
+pnpm 11 的构建脚本放行（`allowBuilds`）和 electron-builder 的 `@electron/get` 版本覆盖已写入 `pnpm-workspace.yaml`。
+
+产物位于 `release/`：
+
+```text
+release/
+  win-unpacked/                    # 免安装目录版
+  MONOFORM Setup 0.6.0.exe        # NSIS 安装包
+```
+
+预览已构建的桌面产物用 `npm run start` 或 `pnpm start`；构建浏览器版用 `npm run build:web`。
+
+为了让提交到仓库的安装包低于 GitHub 的单文件 100 MiB 限制，`electron-builder.yml` 使用 `compression: maximum`，并只保留 `zh-CN` / `en-US` 两个 Electron locale。仓库的 `downloads/` 只提交安装包和校验值；`release/win-unpacked/` 体积较大且可由打包命令重建，不入库。发布新版本时，把 `release/MONOFORM Setup <version>.exe` 复制为 `downloads/MONOFORM-<version>-win-x64-setup.exe`，重新生成 `downloads/SHA256SUMS.txt`，并更新上面的下载链接。超过 100 MiB 的安装包应改用 GitHub Releases 附件，不要直接提交到仓库。
 
 ## 主要功能
 
@@ -188,15 +290,15 @@ npm run preview
 - 地面路线绘制、弧长重采样、角色朝向关键帧和路线关键帧所有权管理。
 - 可选的本地 AI 场景、姿势和物体生成，并转换为可编辑 MONOFORM 对象。
 - PNG、MP4 和 JSON 工程导出。
-- 浏览器自动恢复、50 步撤销与重做。
+- 浏览器自动恢复、50 步撤销与重做；桌面版与浏览器版分别使用各自的本地存储。
 
 ## 数据与隐私
 
-工程内容和自定义姿势保存在浏览器本地，或由用户手动导出。除非用户主动使用本地 AI 生成功能，工程不会自动上传网络；AI 请求只发送到用户配置的模型服务。
+桌面版的工程内容和自定义姿势保存在 Electron 的本地存储（与浏览器版属于不同 origin，互不自动同步），或由用户手动导出。除非用户主动使用本地 AI 生成功能，工程不会自动上传网络；AI 请求只发送到用户配置的模型服务。模型配置和 API 密钥保存在本机，不进入工程文件或渲染层。
 
 ## 技术栈
 
-React、Three.js、React Three Fiber、Vite、Mediabunny。
+Electron、electron-vite、TypeScript（主进程与 AI 服务）、React、Three.js、React Three Fiber、Vite、Mediabunny。
 
 ## 品牌
 

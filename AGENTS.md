@@ -4,28 +4,45 @@
 
 ## 项目定位
 
-MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭建白模场景、摆放带骨骼人物、管理多个独立镜头、制作人物与摄像机关键帧，并导出 PNG、MP4 或 `.monoform.json` 工程。可选的本机 Python 服务负责把参考图/文字转成可编辑的白模场景、姿势和物体，但它永远不是成片流程的必需组件。
+MONOFORM（素形）是一个以 Electron 桌面应用为主、同时保留浏览器构建的三维白模预演工作台：搭建白模场景、摆放带骨骼人物、管理多个独立镜头、制作人物与摄像机关键帧，并导出 PNG、MP4 或 `.monoform.json` 工程。可选的本机 AI 服务（Node + TypeScript）负责把参考图/文字转成可编辑的白模场景、姿势和物体，但它永远不是成片流程的必需组件。桌面版会自动启动该服务；浏览器版可通过独立的 `npm run server` 使用同一套服务。
 
-技术栈：React 19 + Three.js 0.170 + React Three Fiber/drei + Vite 8（`"type": "module"`）。没有 TypeScript、ESLint、Prettier 配置，也没有状态管理库；构建/运行不依赖任何后端（AI 服务除外，且可选）。
+技术栈：React 19 + Three.js 0.170 + React Three Fiber/drei + Vite 8 + Electron 40 + electron-vite 6（`"type": "module"`）。Electron 主进程、preload 与 `server/` 使用 TypeScript；`src/` 渲染层仍是 JS/JSX（没有 ESLint、Prettier 配置，也没有状态管理库）。本地 Node 版本要求 `>=20.19.0`（Vite 8 / electron-vite 6 的实际下限）；构建/运行不依赖任何后端（AI 服务除外，且可选）。
 
 ## 常用命令
 
 | 目的 | 命令 | 说明 |
 | --- | --- | --- |
-| 开发 | `npm run dev` | Vite，`127.0.0.1:5173`；`/api` 代理到 `127.0.0.1:8891` |
-| 构建 | `npm run build` | 产物在 `dist/`（已 gitignore） |
-| 预览产物 | `npm run preview` | `127.0.0.1` |
-| 单元测试 | `node --test tests/` | 没有 `npm test` 脚本；测试用 Node 内置 `node:test` |
-| 跑单个测试文件 | `node tests/cameraMotion.test.mjs` | runner 无法 spawn 子进程时的替代跑法 |
+| 开发桌面版 | `npm run dev` | electron-vite，打开 Electron 窗口；渲染层 HMR |
+| 开发浏览器版 | `npm run dev:web` | Vite，`127.0.0.1:5173`；`/api` 代理到 `127.0.0.1:8891` |
+| 构建桌面版 | `npm run build` | 先 `typecheck`，产物在 `out/`（已 gitignore） |
+| 预览桌面产物 | `npm run start` | `electron-vite preview`，走生产 `app://` 加载 |
+| 打包 Windows | `npm run dist:win` | electron-builder，产物在 `release/` |
+| 构建浏览器版 | `npm run build:web` | 产物在 `dist/`（GitHub Pages 使用） |
+| 预览浏览器产物 | `npm run preview:web` | `127.0.0.1`，`/api` 代理到 8891 |
+| 单元测试 | `npm test` | `node --test`（渲染层纯逻辑）+ `tsx --test`（服务端） |
+| 单跑渲染层测试 | `npm run test:node` | Node 自动发现 `tests/*.test.mjs`；不要传目录参数 |
+| 单跑服务端测试 | `npm run test:server` | `tests/server/*.spec.ts` |
+| 类型检查 | `npm run typecheck` | `tsc -p tsconfig.node.json --noEmit` |
 | 重建骨骼动画 | `npm run build:animations` | 用 `scripts/assets/` 里的固定源文件重写 `public/models/xbot-animated.glb` |
-| 本机 AI 服务 | `python server/server.py` | `127.0.0.1:8891`，可选；无前端 dev server 时同时托管 `dist/` |
+| 独立 AI 服务 | `npm run server` | `127.0.0.1:8891`，可选；同时托管 `dist/` |
 
-依赖安装遵循锁文件 `package-lock.json`（`npm ci`）。README 面向用户，`docs/USER_GUIDE.md` 是操作手册。
+依赖安装遵循锁文件 `package-lock.json`（`npm ci`）。仓库根目录的 `.npmrc` 将 registry 指向 npmmirror（淘宝源）。npm 11 会在 `package.json` 的 `allowScripts` 中记录已批准的安装脚本（当前为 electron / electron-winstaller / esbuild）；pnpm 11 则在 `pnpm-workspace.yaml` 的 `allowBuilds` 中放行同一组包；升级这些包后需同步更新两处。`pnpm-workspace.yaml` 还将 app-builder-lib 的 `@electron/get` 覆盖为 `3.1.0`：electron-builder 26.18 需要该版本的 `ElectronDownloadCacheMode`，3.0.0 会导致打包时报 `ReadWrite` 未定义。README 面向用户，`docs/USER_GUIDE.md` 是操作手册。
 
 ## 目录与职责
 
 | 路径 | 职责 |
 | --- | --- |
+| `electron/main/index.ts` | Electron 生命周期、单实例、启动本机 AI 服务、创建窗口、下载/权限策略 |
+| `electron/main/app-protocol.ts` | 生产环境的 `app://monoform/...` 协议：托管 `out/renderer`、MIME、CSP、路径穿越防护 |
+| `electron/main/window.ts` | BrowserWindow、preload、运行时参数注入、自定义标题栏（原生 caption 按钮深色 overlay）、导航与 DevTools 限制 |
+| `electron/preload/index.ts` | 通过 `contextBridge` 只暴露 `window.monoform`（api base/token/error/platform） |
+| `server/index.ts` | `createAiService`：配置、模型调用、场景校验的统一入口 |
+| `server/http.ts` | Node HTTP 服务：路由、CORS、token、multipart、静态文件（独立服务用） |
+| `server/config.ts` | key 文件 / `model-config.local.json` / userData 配置读写 |
+| `server/scene.ts` | 场景规范化、结构校验、几何修复与 evidence 审计（纯逻辑） |
+| `server/upstream.ts` | 兼容 OpenAI 的模型调用、重试、超时与 JSON 解析 |
+| `server/prompts/` | 场景提示词原文与 `skills/*.json` 的姿势/物体提示词加载 |
+| `server/standalone.ts` | 浏览器版独立服务入口（`npm run server`） |
 | `src/App.jsx` | 约 2900 行。全部应用状态、面板、时间轴、镜头管理、撤销/自动保存、PNG/MP4/JSON 导出。应用层都在这里 |
 | `src/Viewport.jsx` | 约 1450 行。全部 Three.js 场景；导出 `MainViewport`、`CameraPreview`。人物白模与骨骼、IK、几何体、光照、路线预览；按 `bodyType === 'minimal'` 切换到极简模型 |
 | `src/MinimalPersonModel.jsx` | 极简模型渲染：圆柱身体、球头、正面球面片与 `CanvasTexture` 面部文字（不加载 Mixamo GLB） |
@@ -35,14 +52,20 @@ MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭
 | `src/previsMotion.js` | 纯函数：地面路线 → 弧长重采样的角色关键帧 |
 | `src/routeOwnership.js` | 纯函数：路线关键帧与手工关键帧的所有权判定与合并 |
 | `src/sceneToMonoform.js` | 纯函数：AI 场景 Z-up → MONOFORM Y-up 的物体/相机转换 |
+| `src/api.js` | 渲染层 API 传输：Electron 用 preload 注入的绝对地址+token，浏览器版回退相对 `/api` |
 | `src/rig.js` | mixamorig 骨骼定义、动作预设、姿势克隆/插值 |
 | `src/ShotsPanel.jsx` | 镜头列表 UI（纯展示，状态由 App 传入） |
 | `src/styles.css` | 全局样式；深色主题色值集中在 `:root` 变量 |
-| `server/server.py` | 可选 AI 服务（仅标准库）；`server/perspective_prompt.py` 是场景提示词 |
-| `tests/*.test.mjs` | Node 原生测试，只覆盖上面的纯逻辑模块 |
+| `tests/*.test.mjs` | 渲染层纯逻辑测试（`node:test`） |
+| `tests/server/*.spec.ts` | 服务端配置/场景/HTTP/上游调用测试（`tsx --test`） |
 | `scripts/` | 动画烘焙脚本；`scripts/assets/` 存固定版本的源资产 |
 | `public/` | 运行时静态资源（模型、品牌图），必须经 `import.meta.env.BASE_URL` 引用 |
-| `.github/workflows/deploy-pages.yml` | push 到 `master` 时 `npm ci` + `npm run build` → GitHub Pages |
+| `electron.vite.config.ts` | 主进程/preload/渲染层三段构建配置；渲染层源码仍在仓库根 `src/` |
+| `electron-builder.yml` | Windows NSIS 安装包配置 |
+| `downloads/` | 提交到仓库的 Windows 安装包与 `SHA256SUMS.txt`；README 直接下载入口 |
+| `pnpm-workspace.yaml` | pnpm `allowBuilds` 白名单与 `@electron/get` override |
+| `.npmrc` | npm registry 指向 npmmirror（淘宝源） |
+| `.github/workflows/deploy-pages.yml` | push 到 `master` 时 `npm ci` + `typecheck` + `test` + `npm run build:web` → GitHub Pages |
 | `docs/` | 用户手册与界面截图 |
 
 ## 改代码前必须守住的不变量
@@ -61,37 +84,42 @@ MONOFORM（素形）是一个纯浏览器端的三维白模预演工作台：搭
 
 ## 代码风格
 
-- 纯 JS + JSX；**不写行尾分号**、字符串用单引号、2 空格缩进；小组件与工具函数用 `const f = (...) => ...`，顶层组件用 `function Name()`。
+- 渲染层沿用纯 JS + JSX；`electron/`、`server/` 用 TypeScript。两者都**不写行尾分号**、字符串用单引号、2 空格缩进；小组件与工具函数用 `const f = (...) => ...`，顶层组件用 `function Name()`。
 - `App.jsx` / `Viewport.jsx` 的密集单行 JSX 是刻意保留的现状。只改必要的行，不要整文件格式化，否则 diff 不可读、review 无从下手。
 - 面向用户的文案、报错、toast 用中文；与用户沟通、文档也用中文。注释解释“为什么”，不写“做了什么”。
 - 图标统一 `lucide-react`；样式写进 `styles.css` 并复用 `--accent`、`--panel` 等现有变量，不要另起配色体系。
-- 不轻易新增运行时依赖；测试只用 `node:test` + `node:assert/strict`，不引入测试框架。
+- 不轻易新增运行时依赖；测试只用 `node:test` + `node:assert/strict`，不引入测试框架。服务端测试用 `.spec.ts` 命名并由 `tsx --test` 显式运行，避免 Node 24 自动发现 `.test.ts` 时重复执行。
 
 ## 可选 AI 服务
 
-- 只绑定 `127.0.0.1:8891`，不监听外网。
-- 配置来源：`server/model-config.local.json`（已 gitignore）或 `MONOFORM_MODEL_KEY_FILE` 指向的 key 文件（默认 `F:\hermes-sceneTo 3d\model-key.txt`）。密钥只允许存在这两处，绝不写进源码、工程 JSON、截图、日志或提交。
-- 接口：`GET /api/health`、`/api/model-config`、`/api/models`；`POST /api/model-config`、`/api/generate-scene`、`/api/generate-pose`、`/api/generate-object`。
-- 错误以中文 `{"error": ...}` 返回给 UI，最多截断 2000 字符；只对 5xx 与网络错误重试，4xx 立即抛出。
-- 场景提示词固定在 `server/perspective_prompt.py`；姿势/物体提示词从仓库根目录的 `skills/*.json` 读取——该目录未纳入版本控制、默认不存在，此时返回空字符串属正常现象，不要因此报错或把它加进提交。
-- 没有 Python、没有密钥、没有网络时，普通编辑、动画、导出必须照常可用——这是硬性要求。
+- 桌面版由 Electron 主进程自动启动 AI 服务，只绑定 `127.0.0.1` 的随机端口，并生成随机 Bearer token；渲染层通过 preload 注入的 base URL + token 访问。浏览器版用 `npm run server` 启动独立服务，默认 `127.0.0.1:8891`。
+- 独立服务仍可托管 `dist/`，保留“没有 Vite dev server 时直接打开 8891”的旧工作流；Electron 不使用该静态托管。
+- 配置来源：开发/`electron-vite preview` 用 `server/model-config.local.json`（已 gitignore）；打包后用 `app.getPath('userData')/model-config.json`；`MONOFORM_MODEL_CONFIG_FILE` 可覆盖。key 文件由 `MONOFORM_MODEL_KEY_FILE` 指定（默认 `F:\hermes-sceneTo 3d\model-key.txt`）。密钥只允许存在这些本机文件，绝不写进源码、工程 JSON、截图、日志或提交。
+- 接口：`GET /api/health`、`/api/model-config`、`/api/models`；`POST /api/model-config`、`/api/generate-scene`、`/api/generate-pose`、`/api/generate-object`。`/api/health` 不需要 token；其余在 token 模式下要求 `Authorization: Bearer ...`。
+- 错误以中文 `{"error": ...}` 返回给 UI，最多截断 2000 字符；只对 5xx 与网络错误重试，4xx 立即抛出。multipart 上传上限 25 MB（图片 20 MB），配置 JSON 8 KB。
+- 场景提示词固定在 `server/prompts/perspective.ts`；姿势/物体提示词从仓库根目录的 `skills/*.json` 读取——该目录未纳入版本控制、默认不存在，此时返回空字符串属正常现象，不要因此报错或把它加进提交。
+- 没有模型密钥、没有网络时，普通编辑、动画、导出必须照常可用——这是硬性要求。AI 服务启动失败时桌面窗口仍要打开，AI 面板给出中文错误。
 
 ## 验证清单
 
 按改动影响面执行：
 
-1. `node --test tests/`（受限环境下逐文件运行）——纯逻辑必须全绿。
-2. `npm run build`——确认没有 import/语法错误。主 chunk 约 1.3 MB 是 three.js 的既有体积，不是回归。
-3. `npm run dev` 后手动走一遍受影响的流程：加人物/摆姿、镜头切换、关键帧记录与播放、PNG、MP4、打开与导出工程；刷新页面确认自动恢复。
-4. 改了工程结构时，用**改动前**导出的 `.monoform.json` 打开一次，确认旧工程仍可用。
-5. 改了 AI 相关代码时，在无 Python / 无密钥的环境下确认编辑器功能不受影响。
+1. `npm test`——渲染层 `tests/*.test.mjs` 与服务端 `tests/server/*.spec.ts` 必须全绿。
+2. `npm run typecheck`——Electron 主进程、preload、server 与 TS 测试必须无类型错误。
+3. `npm run build`——确认 `out/main/index.js`、`out/preload/index.cjs`、`out/renderer/index.html` 产出；`npm run build:web` 确认 `dist/` 仍可部署。
+4. `npm run dev` 或 `npm run start` 后手动走一遍：加人物/摆姿、镜头切换、关键帧记录与播放、PNG、MP4、打开与导出工程；重启应用确认自动恢复。生产模式要确认 `app://` 下内置 GLB、品牌图和 `mediabunny` 动态 chunk 都能加载。
+5. 改了工程结构时，用**改动前**导出的 `.monoform.json` 打开一次，确认旧工程仍可用。
+6. 改了 AI 相关代码时，在无密钥 / 断网环境下确认编辑器功能不受影响；有密钥时确认 CORS 预检、token 和 multipart 上传正常。
+7. 改了打包配置时运行 `npm run dist:win`，安装后启动确认加载与下载对话框正常。
+8. 如果 Electron 报 `does not provide an export named 'BrowserWindow'`，通常是终端设置了 `ELECTRON_RUN_AS_NODE`；清除该变量后再启动。
 
 若本机沙箱禁止写 `node_modules`，Vite 会在 `node_modules/.vite-temp` 报 `EPERM`；这是环境限制而非仓库问题，可用 `npx vite build --configLoader runner` 验证构建是否通过。
 
 ## 发布与仓库状态
 
 - 发布分支是 `master`（由 `main` 合并 `develop` 后建立）；上线 = 合入 `master` 并 push，Actions 构建后发布到 GitHub Pages。日常开发常在 `develop`，不要直接向 `master` 强推。
-- `package-lock.json` 是 CI 使用的锁文件；`pnpm-lock.yaml` 已随 `develop` 进入仓库，但 CI 仍以 npm 锁文件为准。
+- `package-lock.json` 是 CI 使用的锁文件；`pnpm-lock.yaml` 已随 `develop` 进入仓库，但 CI 仍以 npm 锁文件为准。改动依赖时两个锁文件都要更新（`npm install` + `pnpm install --lockfile-only`）。
+- 本机 Node 要求 `>=20.19.0`；Electron 40 是仍支持 Node 20 工具链的最新主版本，不要直接升到 Electron 41+（其安装依赖要求 Node 22.12）。
 - 本仓库 `origin` 指向 `nivenice/monoform-previs-studio`，`upstream` 是原作者仓库 `GuiYi-Xi/monoform-previs-studio`；README 开头保留了原仓库地址说明。
 - 替换模型资产时，同步更新 `public/models/ANIMATION_SOURCES.md` 的出处与许可证，并保留 `scripts/assets/` 里的固定源文件，保证可离线重建。
 

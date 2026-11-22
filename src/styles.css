@@ -32,8 +32,27 @@ button:disabled { opacity: .28; cursor: not-allowed !important; }
 
 .app-shell { width: 100%; height: 100%; background: var(--bg); display: flex; flex-direction: column; }
 .topbar {
-  height: 49px; flex: 0 0 49px; display: grid; grid-template-columns: 232px auto 1fr auto; align-items: center;
-  gap: 16px; padding: 0 12px 0 10px; background: #20201f; border-bottom: 1px solid #353532; box-shadow: 0 2px 12px rgba(0,0,0,.18); z-index: 20;
+  height: 49px; flex: 0 0 49px; display: grid; grid-template-columns: 232px auto minmax(0, 1fr) auto; align-items: center;
+  gap: 16px; padding: 0 12px 0 10px; background: var(--panel); border-bottom: 1px solid var(--line); box-shadow: 0 2px 12px rgba(0,0,0,.14); z-index: 20;
+}
+/* Electron custom titlebar: native caption buttons overlay the right edge. */
+.app-shell.has-custom-titlebar .topbar {
+  padding-right: 150px; -webkit-app-region: drag; user-select: none;
+}
+.app-shell.has-custom-titlebar .topbar button,
+.app-shell.has-custom-titlebar .topbar input,
+.app-shell.has-custom-titlebar .topbar select,
+.app-shell.has-custom-titlebar .topbar a {
+  -webkit-app-region: no-drag;
+}
+.app-shell.has-custom-titlebar .brand-glyph img {
+  pointer-events: none; -webkit-user-drag: none;
+}
+.app-shell.has-custom-titlebar .project-title {
+  min-width: 0;
+}
+.app-shell.has-custom-titlebar .project-title small {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .brand-mark { display: flex; align-items: center; gap: 9px; height: 100%; }
 .brand-glyph { position: relative; width: 30px; height: 30px; overflow: hidden; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); border-radius: 7px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
@@ -43,17 +62,17 @@ button:disabled { opacity: .28; cursor: not-allowed !important; }
 .brand-mark small { font-size: 9px; color: var(--text-faint); letter-spacing: .18em; }
 .top-actions { display: flex; align-items: center; gap: 3px; }
 .top-actions > button:not(.icon-button), .project-export-button, .export-button { background: transparent; border: 0; height: 30px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border-radius: var(--radius-control); font-size: 11px; color: var(--text-dim); cursor: pointer; }
-.top-actions > button:not(.icon-button):hover { background: #30302d; color: var(--text); }
+.top-actions > button:not(.icon-button):hover { background: var(--panel-raised); color: var(--text); }
 .top-divider { height: 16px; width: 1px; background: var(--line); margin: 0 4px; }
 .project-title { justify-self: center; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); }
 .project-title > button { min-width: 0; max-width: 220px; height: 27px; padding: 0 7px; display: flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text-dim); cursor: pointer; }
 .project-title > button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-title > button svg { flex: 0 0 auto; color: var(--text-faint); }
-.project-title > button:hover { border-color: var(--line); background: #292926; color: var(--text); }
+.project-title > button:hover { border-color: var(--line); background: var(--panel-raised); color: var(--text); }
 .project-title > button:hover svg { color: var(--accent); }
 .project-title small { color: var(--text-faint); }
 .export-actions { display: flex; align-items: center; gap: 5px; }
-.project-export-button { border: 1px solid #464640; background: #2b2b28; }
+.project-export-button { border: 1px solid var(--line); background: var(--panel-raised); }
 .project-export-button:hover { border-color: #666257; color: var(--text); }
 .export-button { background: var(--accent); color: var(--accent-ink); font-weight: 650; padding: 0 12px; min-width: 102px; justify-content: center; }
 .export-button:hover { background: var(--accent-strong); transform: translateY(-1px); }
@@ -501,7 +520,7 @@ button:disabled { opacity: .28; cursor: not-allowed !important; }
 @media (max-width: 1180px) {
   .workspace { grid-template-columns: 210px minmax(0, 1fr) 244px; }
   .timeline { grid-template-columns: 210px minmax(0,1fr); }
-  .topbar { grid-template-columns: 210px auto 1fr auto; }
+  .topbar { grid-template-columns: 210px auto minmax(0, 1fr) auto; }
   .camera-monitor { width: 300px; }
   .timeline-body { grid-template-columns: 98px minmax(0,1fr) 98px; }
 }

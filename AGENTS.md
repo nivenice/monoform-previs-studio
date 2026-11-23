@@ -4,7 +4,7 @@
 
 ## 项目定位
 
-MONOFORM · AGENT（原 MONOFORM · 素形）是一个以 Electron 桌面应用为主、同时保留浏览器构建的三维白模预演工作台：搭建白模场景、摆放带骨骼人物、管理多个独立镜头、制作人物与摄像机关键帧，并导出 PNG、MP4 或 `.monoform.json` 工程。可选的本机 AI 服务（Node + TypeScript）负责把参考图/文字转成可编辑的白模场景、姿势和物体，但它永远不是成片流程的必需组件。桌面版会自动启动该服务；浏览器版可通过独立的 `npm run server` 使用同一套服务。
+MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览器构建的三维白模预演工作台：搭建白模场景、摆放带骨骼人物、管理多个独立镜头、制作人物与摄像机关键帧，并导出 PNG、MP4 或 `.monoform.json` 工程。可选的本机 AI 服务（Node + TypeScript）负责把参考图/文字转成可编辑的白模场景、姿势和物体，但它永远不是成片流程的必需组件。桌面版会自动启动该服务；浏览器版可通过独立的 `npm run server` 使用同一套服务。
 
 技术栈：React 19 + Three.js 0.170 + React Three Fiber/drei + Vite 8 + Electron 40 + electron-vite 6（`"type": "module"`）。Electron 主进程、preload 与 `server/` 使用 TypeScript；`src/` 渲染层仍是 JS/JSX（没有 ESLint、Prettier 配置，也没有状态管理库）。本地 Node 版本要求 `>=22.13.0`（会话 SQLite 使用内置 `node:sqlite`；Vite 8 / electron-vite 6 的下限更低）；构建/运行不依赖任何后端（AI 服务除外，且可选）。
 

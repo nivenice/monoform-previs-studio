@@ -6,7 +6,7 @@
   "main": "./out/main/index.js",
   "type": "module",
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "dev": "electron-vite dev",
@@ -21,7 +21,7 @@
     "dist:win": "npm run build && electron-builder --win",
     "typecheck": "tsc -p tsconfig.node.json --noEmit",
     "test:node": "node --test",
-    "test:server": "tsx --test tests/server/scene.spec.ts tests/server/config.spec.ts tests/server/http.spec.ts tests/server/upstream.spec.ts",
+    "test:server": "tsx --test tests/server/scene.spec.ts tests/server/config.spec.ts tests/server/http.spec.ts tests/server/upstream.spec.ts tests/server/agentStore.spec.ts tests/server/agentService.spec.ts tests/server/agentHttp.spec.ts",
     "test": "npm run test:node && npm run test:server"
   },
   "dependencies": {

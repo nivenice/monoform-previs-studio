@@ -1,5 +1,6 @@
 // Shared shapes for the local AI service. The model output is untrusted JSON,
 // so scene values stay `unknown` until the normalizers validate them.
+import type { AgentService } from './agent/types'
 
 export interface PublicModelConfig {
   baseUrl: string
@@ -55,6 +56,18 @@ export interface RawModelConfig {
   'base-url'?: string
   'api-key'?: string
   model?: string
+  provider?: string
+  'chat-base-url'?: string
+  'chat-api-key'?: string
+  'chat-model'?: string
+  'chat-provider'?: string
+}
+
+export interface ChatModelConfig {
+  'chat-base-url'?: string
+  'chat-api-key'?: string
+  'chat-model'?: string
+  'chat-provider'?: string
 }
 
 export interface GenerateSceneInput {
@@ -76,4 +89,6 @@ export interface AiService {
   generateScene(input: GenerateSceneInput): Promise<GenerateSceneResult>
   generatePose(prompt: string): Promise<unknown>
   generateObject(prompt: string): Promise<unknown>
+  /** Present when a conversation database was configured. */
+  agent?: AgentService
 }

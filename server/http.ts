@@ -2,6 +2,8 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { mimeTypeFor } from './mime'
+import { HttpError, errorMessage, isObject, readJsonBody, readRequestBody, truncate } from './http-body'
+import { handleAgentRequest } from './agent/routes'
 import type { AiService } from './types'
 
 const MAX_MULTIPART_BODY = 25 * 1024 * 1024
@@ -9,22 +11,6 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 const MAX_CONFIG_BODY = 8 * 1024
 const MAX_PROMPT_BODY = 64 * 1024
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error)
-
-const truncate = (value: string, length: number): string => value.slice(0, length)
-
-export class HttpError extends Error {
-  readonly status: number
-
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
-  }
-}
 
 export interface StartAiServerOptions {
   service: AiService
@@ -79,51 +65,6 @@ function sendJson(res: http.ServerResponse, status: number, value: unknown, head
 function sendEmpty(res: http.ServerResponse, status: number, headers: Record<string, string> = {}): void {
   res.writeHead(status, headers)
   res.end()
-}
-
-function readRequestBody(req: http.IncomingMessage, limit: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const declared = Number(req.headers['content-length'] || 0)
-    if (Number.isFinite(declared) && declared > limit) {
-      req.resume()
-      reject(new HttpError(413, `请求体超过 ${Math.round(limit / 1024 / 1024 * 10) / 10} MB 上限`))
-      return
-    }
-    const chunks: Buffer[] = []
-    let total = 0
-    let settled = false
-    const fail = (error: unknown): void => {
-      if (settled) return
-      settled = true
-      reject(error)
-    }
-    req.on('data', (chunk: Buffer) => {
-      if (settled) return
-      total += chunk.length
-      if (total > limit) {
-        req.resume()
-        fail(new HttpError(413, `请求体超过 ${Math.round(limit / 1024 / 1024 * 10) / 10} MB 上限`))
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => {
-      if (settled) return
-      settled = true
-      resolve(Buffer.concat(chunks))
-    })
-    req.on('error', error => fail(error))
-    req.on('aborted', () => fail(new Error('请求已中断')))
-  })
-}
-
-async function readJsonBody(req: http.IncomingMessage, limit: number): Promise<unknown> {
-  const body = await readRequestBody(req, limit)
-  try {
-    return JSON.parse(body.toString('utf8'))
-  } catch {
-    throw new HttpError(400, '请求 JSON 格式无效')
-  }
 }
 
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, staticDir: string): void {
@@ -185,7 +126,7 @@ async function handleRequest(
         }
         const headers: Record<string, string> = {
           ...cors,
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'authorization, content-type',
           'Access-Control-Max-Age': '86400',
         }
@@ -209,6 +150,14 @@ async function handleRequest(
 
       if (req.method === 'GET' && pathname === '/api/health') {
         sendJson(res, 200, service.health(), cors)
+        return
+      }
+      if (pathname.startsWith('/api/agent/')) {
+        if (!service.agent) {
+          sendJson(res, 503, { error: 'AI 助手未启用' }, cors)
+          return
+        }
+        await handleAgentRequest(req, res, pathname, service.agent, cors, log)
         return
       }
       if (req.method === 'GET' && pathname === '/api/model-config') {
@@ -296,8 +245,13 @@ async function handleRequest(
     if (error instanceof HttpError) {
       sendJson(res, error.status, { error: error.message }, cors)
     } else {
-      // API errors are shown in the UI; no key is included here.
-      sendJson(res, 502, { error: truncate(errorMessage(error), 2000) }, cors)
+      const status = (error as { status?: unknown } | null)?.status
+      if (typeof status === 'number' && status >= 400 && status < 600) {
+        sendJson(res, status, { error: truncate(errorMessage(error), 2000) }, cors)
+      } else {
+        // API errors are shown in the UI; no key is included here.
+        sendJson(res, 502, { error: truncate(errorMessage(error), 2000) }, cors)
+      }
     }
   }
 }
@@ -334,6 +288,7 @@ export async function startAiServer(options: StartAiServerOptions): Promise<Runn
     port,
     server,
     close: () => new Promise<void>((resolve, reject) => {
+      options.service.agent?.close()
       if (!server.listening) {
         resolve()
         return
@@ -343,3 +298,5 @@ export async function startAiServer(options: StartAiServerOptions): Promise<Runn
     }),
   }
 }
+
+export { HttpError } from './http-body'

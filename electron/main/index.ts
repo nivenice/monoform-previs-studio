@@ -24,6 +24,11 @@ function resolveSkillsDir(): string {
   return override ? path.resolve(override) : path.join(app.getAppPath(), 'skills')
 }
 
+function resolveAgentDbFile(): string {
+  const override = process.env.MONOFORM_AGENT_DB_FILE
+  return override ? path.resolve(override) : path.join(app.getPath('userData'), 'agent.db')
+}
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -35,7 +40,11 @@ async function prepareRuntime(): Promise<RuntimeInfo> {
   let apiBaseUrl = ''
   let aiError = ''
   try {
-    const service = createAiService({ configFile: resolveConfigFile(), skillsDir: resolveSkillsDir() })
+    const service = createAiService({
+      configFile: resolveConfigFile(),
+      skillsDir: resolveSkillsDir(),
+      agentDbFile: resolveAgentDbFile(),
+    })
     const configuredPort = Number(process.env.MONOFORM_AI_PORT)
     aiServer = await startAiServer({
       service,

@@ -7,8 +7,8 @@ import {
   Unlock,
 } from 'lucide-react'
 import { MainViewport, CameraPreview } from './Viewport.jsx'
-import { api } from './api.js'
 import { sceneToMonoform } from './sceneToMonoform.js'
+import { AgentPanel } from './AgentPanel.jsx'
 import { pathToKeys } from './previsMotion.js'
 import { CAMERA_SHOT_PRESETS, shotPreset, solveFollowCamera } from './cameraMotion.js'
 import { ShotsPanel } from './ShotsPanel.jsx'
@@ -93,31 +93,6 @@ const customAspectFrom = value => {
   return customAspectValue(parts[0] || 16, parts[1] || 9)
 }
 const nextPaint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-
-async function readJsonResponse(response, fallbackMessage = '服务没有返回有效 JSON') {
-  const raw = await response.text()
-  let data = null
-  if (raw.trim()) {
-    try { data = JSON.parse(raw) } catch { throw new Error(`${fallbackMessage}（响应格式错误）`) }
-  }
-  if (!response.ok) throw new Error(data?.error || `${fallbackMessage}（HTTP ${response.status}）`)
-  if (!data) throw new Error(`${fallbackMessage}（响应为空）`)
-  return data
-}
-
-async function fetchJsonResponse(url, options = {}, fallbackMessage = '请求失败', timeoutMs = 45000) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await api.fetch(url, { ...options, signal: controller.signal })
-    return await readJsonResponse(response, fallbackMessage)
-  } catch (error) {
-    if (error?.name === 'AbortError') throw new Error(`${fallbackMessage}（${Math.round(timeoutMs / 1000)} 秒超时）`)
-    throw error
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 function exportDimensionsForAspect(aspectRatio) {
   const ratio = aspectValue(aspectRatio)
@@ -903,59 +878,6 @@ function SceneList({ objects, selectedId, onSelect, onToggleVisible, onToggleLoc
   )
 }
 
-function ModelSettingsPanel() {
-  const [config, setConfig] = useState({ baseUrl: '', model: '', apiKeyConfigured: false })
-  const [baseUrl, setBaseUrl] = useState('')
-  const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState('')
-  const [models, setModels] = useState([])
-  const [status, setStatus] = useState('')
-  const [busy, setBusy] = useState(false)
-  useEffect(() => {
-    let active = true
-    fetchJsonResponse('/api/model-config', {}, '本地识图服务不可用').then(data => {
-      if (!active) return
-      setConfig(data); setBaseUrl(data.baseUrl || ''); setModel(data.model || '')
-    }).catch(error => { if (active) setStatus(error?.message || '本地识图服务不可用；桌面版会自动启动，浏览器版请运行 npm run server') })
-    return () => { active = false }
-  }, [])
-  const requestModels = async () => {
-    setBusy(true); setStatus('正在拉取模型…')
-    try {
-      if (baseUrl.trim() !== config.baseUrl || apiKey.trim()) {
-        const data = await fetchJsonResponse('/api/model-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'base-url': baseUrl.trim(), 'api-key': apiKey.trim(), model: model.trim() || config.model || '' }) }, '保存 API 配置失败，请检查本地识图服务')
-        setConfig(data); setApiKey('')
-      }
-      const data = await fetchJsonResponse('/api/models', {}, '拉取模型失败，请检查本地识图服务和 API 地址', 100000)
-      if (!Array.isArray(data.models)) throw new Error('模型服务返回的列表格式无效')
-      setModels(data.models)
-      setStatus(`已拉取 ${data.models.length} 个模型 · 选择后点击确认`)
-    } catch (error) { setStatus(error.message || '拉取失败') }
-    finally { setBusy(false) }
-  }
-  const confirm = async () => {
-    if (!model.trim()) { setStatus('请先选择模型'); return }
-    setBusy(true)
-    try {
-      const data = await fetchJsonResponse('/api/model-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ 'base-url': baseUrl.trim(), 'api-key': apiKey.trim(), model: model.trim() }) }, '模型切换失败，请检查本地识图服务')
-      setConfig(data); setApiKey(''); setStatus(`已切换为 ${data.model}`)
-    } catch (error) { setStatus(error.message || '模型切换失败') }
-    finally { setBusy(false) }
-  }
-  return <div className="model-settings-panel">
-    <div className="model-settings-heading"><strong>识图服务</strong><span>{config.apiKeyConfigured ? '密钥已配置' : '密钥未配置'}</span></div>
-    <label className="model-settings-field"><span>API 地址</span><input aria-label="识图 API 地址" value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder="https://.../v1" /></label>
-    <label className="model-settings-field"><span>API Key</span><input aria-label="识图 API Key" type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={config.apiKeyConfigured ? '留空保持原密钥' : '填写密钥'} /></label>
-    <button className="model-settings-fetch" type="button" onClick={requestModels} disabled={busy}>{busy ? '请稍候…' : '拉取模型列表'}</button>
-    <div className="model-settings-divider" />
-    <label className="model-settings-field"><span>识图模型</span><select aria-label="识图模型" value={model} onChange={event => setModel(event.target.value)}><option value="">请选择模型</option>{model && !models.some(item => item.id === model) && <option value={model}>{model}（当前／手动）</option>}{models.map(item => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}</select></label>
-    <details className="model-settings-manual"><summary>手动填写模型 ID</summary><input aria-label="手动填写模型 ID" value={model} onChange={event => setModel(event.target.value)} placeholder="模型 ID" /></details>
-    <button className="model-settings-confirm" type="button" onClick={confirm} disabled={busy || !model.trim()}>确认使用此模型</button>
-    <div className="model-settings-status" role="status">{status || `当前：${config.model || '未选择模型'}`}</div>
-    <small className="model-settings-hint">密钥仅保存在本机服务端，不进入工程文件。</small>
-  </div>
-}
-
 function CameraMotionPanel({ camera, objects, currentFrame, fps, onUpdateCamera, onAddKeyframe, onOpenCameraView }) {
   const targetId = camera.follow?.targetId || objects.find(item => item.type === 'person')?.id || ''
   const follow = camera.follow
@@ -970,12 +892,9 @@ function CameraMotionPanel({ camera, objects, currentFrame, fps, onUpdateCamera,
   return <div className="camera-motion-panel"><div className="section-kicker">镜头运动 · 当前 {Math.round(currentFrame)} 帧（{(currentFrame / fps).toFixed(2)} 秒）</div><button type="button" onClick={onOpenCameraView}>查看摄像机画面</button><label>景别<select value={currentShot} onChange={event => setShot(event.target.value)}>{Object.entries(CAMERA_SHOT_PRESETS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label><label><input type="checkbox" checked={Boolean(follow?.enabled && follow?.targetId)} onChange={enable} /> 跟随角色</label>{follow?.enabled && <><label>跟随角色<select value={targetId} onChange={event => patchFollow({ targetId: event.target.value })}>{objects.filter(item => item.type === 'person').map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>距离（角色高度 H）<input type="range" min="1" max="20" step="0.1" value={follow.distance ?? preset.distance} onChange={event => patchFollow({ distance:Number(event.target.value) })} /><output>{Number(follow.distance ?? preset.distance).toFixed(1)} H</output></label><label>环绕角度<input type="range" min="-180" max="180" value={follow.orbitDegrees ?? 0} onChange={event => patchFollow({ orbitDegrees:Number(event.target.value) })} /><output>{Math.round(follow.orbitDegrees ?? 0)}°</output></label></>}<label>焦距<input type="range" min="18" max="120" value={camera.focalLength} onChange={event => onUpdateCamera({ focalLength:Number(event.target.value) })} /><output>{Math.round(camera.focalLength)} mm</output></label><button type="button" className="camera-motion-key" onClick={onAddKeyframe}>在当前帧记录镜头关键帧</button><small>先定位时间轴，再调焦距／景别／跟随，点击记录；已选关键帧可在时间轴参数区直接修改。</small></div>
 }
 
-function LeftSidebar({ objects, selectedId, onSelect, onAddPerson, onAddPrimitive, onImport, onGenerateScene, sceneGenerating, sceneReport, onToggleVisible, onToggleLock, shots, activeShotId, onSelectShot, onAddShot, onDuplicateShot, onDeleteShot, onRenameShot, onCaptureShot, camera, currentFrame, fps, onUpdateCamera, onAddCameraKeyframe, onOpenCameraView, onClearCanvas }) {
+function LeftSidebar({ objects, selectedId, onSelect, onAddPerson, onAddPrimitive, onImport, onToggleVisible, onToggleLock, shots, activeShotId, onSelectShot, onAddShot, onDuplicateShot, onDeleteShot, onRenameShot, onCaptureShot, camera, currentFrame, fps, onUpdateCamera, onAddCameraKeyframe, onOpenCameraView, onClearCanvas }) {
   const [tab, setTab] = useState('assets')
-  const [apiSettingsOpen, setApiSettingsOpen] = useState(false)
   const inputRef = useRef(null)
-  const sceneImageInputRef = useRef(null)
-  const [scenePrompt, setScenePrompt] = useState('')
   return (
     <aside className="left-sidebar panel">
       <div className="panel-tabs">
@@ -986,16 +905,7 @@ function LeftSidebar({ objects, selectedId, onSelect, onAddPerson, onAddPrimitiv
       </div>
       {tab === 'assets' ? (
         <div className="assets-scroll">
-          <div className="section-kicker">场景图转白模 <span className="scene-ai-badge">AI · NEW</span></div>
-          <input className="scene-prompt-input" aria-label="场景补充说明" placeholder="可选：说明需要保留的主体、空间或尺度" value={scenePrompt} onChange={event => setScenePrompt(event.target.value)} />
-          <button className="import-drop scene-image-generate scene-image-featured" type="button" disabled={sceneGenerating} onClick={() => sceneImageInputRef.current?.click()}>
-            <Sparkles size={20} /><strong>{sceneGenerating ? '正在分析空间结构…' : '上传场景图 → 生成可编辑白模'}</strong><span>空间、比例与遮挡优先 · 保留当前布景</span>
-          </button>
-          <input ref={sceneImageInputRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={event => onGenerateScene(event, scenePrompt)} />
-          {sceneReport && <div className="scene-generation-report" role="status"><strong>最近一次生成</strong><span>{sceneReport}</span></div>}
-          <div className="scene-api-settings-row"><span>识图模型：API 设置</span><button type="button" className={`icon-button api-settings-toggle ${apiSettingsOpen ? 'is-active' : ''}`} onClick={() => setApiSettingsOpen(value => !value)} title="打开场景识图 API 设置" aria-label="打开场景识图 API 设置"><Settings2 size={14} /></button></div>
-          {apiSettingsOpen && <ModelSettingsPanel />}
-          <div className="section-kicker section-gap">人物体型</div>
+          <div className="section-kicker">人物体型</div>
           <AssetCard icon={UserRound} title="标准人物" subtitle="中性比例 · 可换动作" onClick={() => onAddPerson('standard')} previewClass="person-preview" />
           <AssetCard icon={UserRound} title="女性人体" subtitle="窄肩宽髋 · 真人比例" onClick={() => onAddPerson('female')} previewClass="person-preview female" />
           <AssetCard icon={UserRound} title="男性人体" subtitle="宽肩躯干 · 真人比例" onClick={() => onAddPerson('male')} previewClass="person-preview male" />
@@ -1025,8 +935,6 @@ function LeftSidebar({ objects, selectedId, onSelect, onAddPerson, onAddPrimitiv
         <SceneList objects={objects} selectedId={selectedId} onSelect={onSelect} onToggleVisible={onToggleVisible} onToggleLock={onToggleLock} onClearCanvas={onClearCanvas} />
       ) : tab === 'motion' ? (
         <CameraMotionPanel camera={camera} objects={objects} currentFrame={currentFrame} fps={fps} onUpdateCamera={onUpdateCamera} onAddKeyframe={onAddCameraKeyframe} onOpenCameraView={onOpenCameraView} />
-      ) : tab === 'settings' ? (
-        <ModelSettingsPanel />
       ) : <ShotsPanel shots={shots} activeShotId={activeShotId} onSelect={onSelectShot} onAdd={onAddShot} onDuplicate={onDuplicateShot} onDelete={onDeleteShot} onRename={onRenameShot} onCapture={onCaptureShot} />}
     </aside>
   )
@@ -1036,7 +944,7 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
   const [collapsedSections, setCollapsedSections] = useState({})
   const toggleSection = id => setCollapsedSections(current => ({ ...current, [id]: !current[id] }))
   if (!selected) {
-    return <aside className="right-sidebar panel empty-inspector"><MousePointer2 size={24} /><span>选择场景中的物体</span></aside>
+    return <div className="inspector-panel empty-inspector"><MousePointer2 size={24} /><span>选择场景中的物体</span></div>
   }
   const isCamera = selected.id === CAMERA_ID
   const position = isCamera ? camera.position : selected.position
@@ -1067,7 +975,7 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
     joints: presetJoints(pose),
   })
   return (
-    <aside className="right-sidebar panel">
+    <div className="inspector-panel">
       <div className="inspector-head">
         <div><small>{isCamera ? 'CAMERA' : typeLabel}</small>{isCamera ? <strong>主摄像机</strong> : <input className="inspector-name-input" value={selected.name} onChange={event => onUpdateObject({ name: event.target.value })} aria-label="物体名称" />}</div>
         <div className="inspector-head-actions">
@@ -1208,7 +1116,7 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
           </InspectorSection>
         )}
       </div>
-    </aside>
+    </div>
   )
 }
 
@@ -1673,9 +1581,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [viewFocusRequest, setViewFocusRequest] = useState(null)
   const [toast, setToast] = useState('')
-  const [sceneGenerating, setSceneGenerating] = useState(false)
-  const [sceneReport, setSceneReport] = useState('')
   const [sceneReferenceImage, setSceneReferenceImage] = useState('')
+  const [rightTab, setRightTab] = useState('inspector')
   const [drawRoute, setDrawRoute] = useState(false)
   useEffect(() => {if(drawRoute){setTransformMode('select');setLightingPanelOpen(false);setCameraAnglePanelOpen(false);setPlaying(false)}},[drawRoute])
   const [routeEndSecond, setRouteEndSecond] = useState(5)
@@ -1694,6 +1601,8 @@ export default function App() {
   const exportLockRef = useRef(false)
   const historyRef = useRef({ past: [], future: [], last: '', timer: null, restoring: false })
   const latestProjectRef = useRef(null)
+  const objectsRef = useRef(objects)
+  const sceneContextSourceRef = useRef({})
 
   const fps = settings.fps
   const totalFrames = fps * settings.durationSeconds
@@ -1775,6 +1684,30 @@ export default function App() {
   useEffect(() => {
     currentFrameRef.current = currentFrame
   }, [currentFrame])
+
+  useEffect(() => {
+    objectsRef.current = objects
+  }, [objects])
+
+  useEffect(() => {
+    sceneContextSourceRef.current = {
+      objects,
+      camera,
+      shots,
+      activeShotName: activeShot?.name || '',
+      activeShotId,
+      currentFrame,
+      fps,
+      settings,
+      selectedId,
+    }
+  })
+
+  const getSceneContext = useCallback(() => sceneContextSourceRef.current, [])
+  const selectInspector = useCallback(id => {
+    setSelectedId(id)
+    setRightTab('inspector')
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -2175,55 +2108,28 @@ export default function App() {
     reader.readAsDataURL(file)
     event.target.value = ''
   }
-  const generateSceneFromImage = async (event, scenePrompt = '') => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file || sceneGenerating) return
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 20 * 1024 * 1024) {
-      setToast('请选择 20 MB 以内的 PNG、JPG 或 WebP 场景图')
-      return
+  const applySceneFromTool = useCallback((result, attachment) => {
+    const mapped = sceneToMonoform(result.scene, objectsRef.current.map(item => item.id), `scene-${uid()}`)
+    if (!mapped.objects.length) throw new Error('模型返回了场景，但没有可导入的有效体块；请换一张图或补充更明确的空间描述')
+    objectsRef.current = [...objectsRef.current, ...mapped.objects]
+    setObjects(list => [...list, ...mapped.objects])
+    if (mapped.camera) {
+      setCamera(normalizeCamera(mapped.camera))
+      setEditorView({ position: [...mapped.camera.position], target: [...mapped.camera.target] })
     }
-    setSceneGenerating(true)
-    setSceneReport('')
-    try {
-      const payload = new FormData()
-      payload.append('image', file)
-      payload.append('prompt', `只还原空间结构、主体相对大小、前后距离和遮挡；忽略纹理和小细节。${scenePrompt.trim()}`)
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 600000)
-      let response
-      try {
-        const healthResponse = await api.fetch('/api/health', { signal: controller.signal })
-        if (!healthResponse.ok) throw new Error('本地场景识别服务不可用；桌面版会自动启动，浏览器版请运行 npm run server')
-        const health = await readJsonResponse(healthResponse, '本地场景识别服务返回无效响应')
-        if (!health.modelConfigured) throw new Error('场景识别服务未配置模型；请检查服务端 model-key.txt')
-        response = await api.fetch('/api/generate-scene', { method: 'POST', body: payload, signal: controller.signal })
-      } finally {
-        clearTimeout(timeout)
-      }
-      const result = await readJsonResponse(response, '场景识图服务返回无效响应')
-      const mapped = sceneToMonoform(result.scene, objects.map(item => item.id), `scene-${uid()}`)
-      if (!mapped.objects.length) throw new Error('模型返回了场景，但没有可导入的有效体块；请换一张图或补充更明确的空间描述')
-      // Never replace an existing project on an AI response. All imported pieces are
-      // independent MONOFORM objects, and the active shot retains its own animation.
-      setObjects(list => [...list, ...mapped.objects])
-      if (mapped.camera) setCamera(normalizeCamera(mapped.camera))
-      if (mapped.camera) setEditorView({ position: [...mapped.camera.position], target: [...mapped.camera.target] })
-      setSelectedId(mapped.objects[0].id)
-      setSceneReferenceImage(current => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(file) })
-      const report = `新增 ${mapped.objects.length} 个独立体块 · ${mapped.evidence.length} 组结构证据${result.warnings?.length ? ` · ${result.warnings.length} 条待核对` : ''}`
-      setSceneReport(report)
-      setToast(report)
-    } catch (error) {
-      const reason = error.name === 'AbortError'
-        ? '识别超时（10 分钟），请重试或换一张较清晰的图'
-        : (error instanceof TypeError ? '本地识图服务不可用；桌面版会自动启动，浏览器版请运行 npm run server' : error.message || '生成失败')
-      setSceneReport(`未导入：${reason}`)
-      setToast(reason)
-    } finally {
-      setSceneGenerating(false)
+    setSelectedId(mapped.objects[0].id)
+    if (attachment?.file) {
+      setSceneReferenceImage(current => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(attachment.file) })
     }
-  }
+    const report = `新增 ${mapped.objects.length} 个独立体块 · ${mapped.evidence.length} 组结构证据${result.warnings?.length ? ` · ${result.warnings.length} 条待核对` : ''}`
+    setToast(report)
+    return {
+      added: mapped.objects.length,
+      evidence: mapped.evidence.length,
+      warnings: Array.isArray(result.warnings) ? result.warnings.length : 0,
+      message: report,
+    }
+  }, [])
   const updateObjectById = (id, patch) => {
     setObjectDrafts(drafts => {
       if (!characterKeyframes[id]?.length) {
@@ -2774,7 +2680,7 @@ export default function App() {
       </header>
 
       <div className="workspace">
-        <LeftSidebar objects={objects} selectedId={selectedId} onSelect={setSelectedId} onAddPerson={addPerson} onAddPrimitive={addPrimitive} onImport={importModel} onGenerateScene={generateSceneFromImage} sceneGenerating={sceneGenerating} sceneReport={sceneReport} onToggleVisible={id => updateObjectById(id, { visible: objects.find(item => item.id === id)?.visible === false })} onToggleLock={id => updateObjectById(id, { locked: !objects.find(item => item.id === id)?.locked })} shots={displayedShots} activeShotId={activeShotId} onSelectShot={switchShot} onAddShot={addShot} onDuplicateShot={duplicateShot} onDeleteShot={deleteShot} onRenameShot={renameShot} onCaptureShot={captureShotThumbnail} camera={camera} currentFrame={currentFrame} fps={fps} onUpdateCamera={updateCameraFromUI} onAddCameraKeyframe={addKeyframe} onOpenCameraView={openCameraView} onClearCanvas={clearCanvas} />
+        <LeftSidebar objects={objects} selectedId={selectedId} onSelect={selectInspector} onAddPerson={addPerson} onAddPrimitive={addPrimitive} onImport={importModel} onToggleVisible={id => updateObjectById(id, { visible: objects.find(item => item.id === id)?.visible === false })} onToggleLock={id => updateObjectById(id, { locked: !objects.find(item => item.id === id)?.locked })} shots={displayedShots} activeShotId={activeShotId} onSelectShot={switchShot} onAddShot={addShot} onDuplicateShot={duplicateShot} onDeleteShot={deleteShot} onRenameShot={renameShot} onCaptureShot={captureShotThumbnail} camera={camera} currentFrame={currentFrame} fps={fps} onUpdateCamera={updateCameraFromUI} onAddCameraKeyframe={addKeyframe} onOpenCameraView={openCameraView} onClearCanvas={clearCanvas} />
         <section className="viewport-shell">
           <div className="viewport-toolbar floating-panel">
             <ToolButton icon={MousePointer2} label="选择" active={!['translate', 'rotate', 'scale'].includes(transformMode)} onClick={() => setTransformMode('select')} shortcut="Q" />
@@ -2826,8 +2732,8 @@ export default function App() {
                 animationTime={currentFrame / fps}
                 selectedId={selectedId}
                 activeJoint={selectedJoint}
-                onSelect={setSelectedId}
-                onJointSelect={(objectId, jointId) => { setSelectedId(objectId); setSelectedJoint(jointId) }}
+                onSelect={selectInspector}
+                onJointSelect={(objectId, jointId) => { selectInspector(objectId); setSelectedJoint(jointId) }}
                 transformMode={transformMode}
                 transformSpace={transformSpace}
                 snapEnabled={snapEnabled}
@@ -2851,7 +2757,7 @@ export default function App() {
           <div className={`camera-monitor is-${monitorMode}`}>
             <div className="monitor-head"><div><Video size={13} /><strong>主摄像机 01</strong><span>{monitorMode === 'minimized' ? 'CAMERA' : 'CAMERA VIEW'}</span></div><div className="monitor-head-actions">
               {monitorMode === 'minimized' ? <button title="恢复摄像机窗口" onClick={() => setMonitorMode('normal')}><Maximize2 size={13} /></button> : <>
-                <button title="选择场景中的主摄像机" onClick={() => setSelectedId(CAMERA_ID)}><Camera size={12} /></button>
+                <button title="选择场景中的主摄像机" onClick={() => selectInspector(CAMERA_ID)}><Camera size={12} /></button>
                 <button title="最小化摄像机窗口" onClick={() => setMonitorMode('minimized')}><Minus size={13} /></button>
                 <button title={monitorMode === 'expanded' ? '恢复摄像机窗口大小' : '放大摄像机窗口'} onClick={() => setMonitorMode(mode => mode === 'expanded' ? 'normal' : 'expanded')}>{monitorMode === 'expanded' ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
                 <button title="切换到摄像机视角" onClick={openCameraView}><ZoomIn size={13} /></button>
@@ -2868,7 +2774,18 @@ export default function App() {
             </div>}
           </div>
         </section>
-        <Inspector selected={inspectorSelected} camera={camera} objects={objects} selectedJoint={selectedJoint} customPoses={customPoses} onSelectJoint={setSelectedJoint} onUpdateObject={updateSelected} onUpdateCamera={updateCameraFromUI} onDelete={deleteSelected} onDuplicate={duplicateSelected} onFocus={focusSelected} onToggleLock={() => activeObject && updateSelected({ locked: !activeObject.locked })} onGround={groundSelected} onResetPosition={resetSelectedPosition} onResetRotation={resetSelectedRotation} onResetScale={resetSelectedScale} onSaveCustomPose={saveCustomPose} onApplyCustomPose={applyCustomPose} onDeleteCustomPose={deleteCustomPose} />
+        <aside className="right-sidebar panel">
+          <div className="panel-tabs panel-tabs-right" role="tablist" aria-label="右侧面板">
+            <button type="button" role="tab" aria-selected={rightTab === 'inspector'} className={rightTab === 'inspector' ? 'is-active' : ''} onClick={() => setRightTab('inspector')}>属性</button>
+            <button type="button" role="tab" aria-selected={rightTab === 'agent'} className={rightTab === 'agent' ? 'is-active' : ''} onClick={() => setRightTab('agent')}>AI 助手</button>
+          </div>
+          <div className={`right-tab-body ${rightTab === 'inspector' ? '' : 'is-hidden'}`} role="tabpanel">
+            <Inspector selected={inspectorSelected} camera={camera} objects={objects} selectedJoint={selectedJoint} customPoses={customPoses} onSelectJoint={setSelectedJoint} onUpdateObject={updateSelected} onUpdateCamera={updateCameraFromUI} onDelete={deleteSelected} onDuplicate={duplicateSelected} onFocus={focusSelected} onToggleLock={() => activeObject && updateSelected({ locked: !activeObject.locked })} onGround={groundSelected} onResetPosition={resetSelectedPosition} onResetRotation={resetSelectedRotation} onResetScale={resetSelectedScale} onSaveCustomPose={saveCustomPose} onApplyCustomPose={applyCustomPose} onDeleteCustomPose={deleteCustomPose} />
+          </div>
+          <div className={`right-tab-body ${rightTab === 'agent' ? '' : 'is-hidden'}`} role="tabpanel">
+            <AgentPanel getSceneContext={getSceneContext} onApplyScene={applySceneFromTool} />
+          </div>
+        </aside>
         <Timeline
           currentFrame={currentFrame}
           fps={fps}

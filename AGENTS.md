@@ -6,7 +6,7 @@
 
 MONOFORM（素形）是一个以 Electron 桌面应用为主、同时保留浏览器构建的三维白模预演工作台：搭建白模场景、摆放带骨骼人物、管理多个独立镜头、制作人物与摄像机关键帧，并导出 PNG、MP4 或 `.monoform.json` 工程。可选的本机 AI 服务（Node + TypeScript）负责把参考图/文字转成可编辑的白模场景、姿势和物体，但它永远不是成片流程的必需组件。桌面版会自动启动该服务；浏览器版可通过独立的 `npm run server` 使用同一套服务。
 
-技术栈：React 19 + Three.js 0.170 + React Three Fiber/drei + Vite 8 + Electron 40 + electron-vite 6（`"type": "module"`）。Electron 主进程、preload 与 `server/` 使用 TypeScript；`src/` 渲染层仍是 JS/JSX（没有 ESLint、Prettier 配置，也没有状态管理库）。本地 Node 版本要求 `>=20.19.0`（Vite 8 / electron-vite 6 的实际下限）；构建/运行不依赖任何后端（AI 服务除外，且可选）。
+技术栈：React 19 + Three.js 0.170 + React Three Fiber/drei + Vite 8 + Electron 40 + electron-vite 6（`"type": "module"`）。Electron 主进程、preload 与 `server/` 使用 TypeScript；`src/` 渲染层仍是 JS/JSX（没有 ESLint、Prettier 配置，也没有状态管理库）。本地 Node 版本要求 `>=22.13.0`（会话 SQLite 使用内置 `node:sqlite`；Vite 8 / electron-vite 6 的下限更低）；构建/运行不依赖任何后端（AI 服务除外，且可选）。
 
 ## 常用命令
 
@@ -36,13 +36,19 @@ MONOFORM（素形）是一个以 Electron 桌面应用为主、同时保留浏�
 | `electron/main/app-protocol.ts` | 生产环境的 `app://monoform/...` 协议：托管 `out/renderer`、MIME、CSP、路径穿越防护 |
 | `electron/main/window.ts` | BrowserWindow、preload、运行时参数注入、自定义标题栏（原生 caption 按钮深色 overlay）、导航与 DevTools 限制 |
 | `electron/preload/index.ts` | 通过 `contextBridge` 只暴露 `window.monoform`（api base/token/error/platform） |
-| `server/index.ts` | `createAiService`：配置、模型调用、场景校验的统一入口 |
-| `server/http.ts` | Node HTTP 服务：路由、CORS、token、multipart、静态文件（独立服务用） |
-| `server/config.ts` | key 文件 / `model-config.local.json` / userData 配置读写 |
+| `server/index.ts` | `createAiService`：配置、模型调用、场景校验、agent 服务的统一入口 |
+| `server/http.ts` | Node HTTP 服务：路由、CORS、token、multipart、静态文件、SSE 委派（独立服务用） |
+| `server/http-body.ts` | 共享 HTTP body 读取、`HttpError` 与错误/截断工具 |
+| `server/agent/store.ts` | 会话/消息/附件 SQLite（`node:sqlite`，WAL、级联删除、schema v1） |
+| `server/agent/service.ts` | agent 配置、模型列表、turn/SSE、场景工具、并发与 abort |
+| `server/agent/upstream.ts` | 兼容 OpenAI 的流式 `chat/completions` 与 tool_calls 聚合 |
+| `server/agent/routes.ts` | `/api/agent/*` 路由、SSE 写事件、multipart 附件 |
+| `server/agent/prompt.ts` / `types.ts` | agent system prompt、唯一的 `scene_to_white_model` 工具、共享类型 |
+| `server/config.ts` | key 文件 / `model-config.local.json` / userData 配置读写；chat 与 vision 两套键 |
 | `server/scene.ts` | 场景规范化、结构校验、几何修复与 evidence 审计（纯逻辑） |
 | `server/upstream.ts` | 兼容 OpenAI 的模型调用、重试、超时与 JSON 解析 |
 | `server/prompts/` | 场景提示词原文与 `skills/*.json` 的姿势/物体提示词加载 |
-| `server/standalone.ts` | 浏览器版独立服务入口（`npm run server`） |
+| `server/standalone.ts` | 浏览器版独立服务入口（`npm run server`）；会话 DB 在 `.monoform-runtime/agent.db` |
 | `src/App.jsx` | 约 2900 行。全部应用状态、面板、时间轴、镜头管理、撤销/自动保存、PNG/MP4/JSON 导出。应用层都在这里 |
 | `src/Viewport.jsx` | 约 1450 行。全部 Three.js 场景；导出 `MainViewport`、`CameraPreview`。人物白模与骨骼、IK、几何体、光照、路线预览；按 `bodyType === 'minimal'` 切换到极简模型 |
 | `src/MinimalPersonModel.jsx` | 极简模型渲染：圆柱身体、球头、正面球面片与 `CanvasTexture` 面部文字（不加载 Mixamo GLB） |
@@ -53,11 +59,18 @@ MONOFORM（素形）是一个以 Electron 桌面应用为主、同时保留浏�
 | `src/routeOwnership.js` | 纯函数：路线关键帧与手工关键帧的所有权判定与合并 |
 | `src/sceneToMonoform.js` | 纯函数：AI 场景 Z-up → MONOFORM Y-up 的物体/相机转换 |
 | `src/api.js` | 渲染层 API 传输：Electron 用 preload 注入的绝对地址+token，浏览器版回退相对 `/api` |
+| `src/apiClient.js` | 渲染层 JSON 请求/超时/中文网络错误归一化 |
+| `src/AgentPanel.jsx` | 右侧 AI 助手：会话历史、流式消息、工具卡片、附件输入 |
+| `src/AgentConfigDialog.jsx` | 对话/识图两套模型配置弹窗（供应商预设、拉取模型、密钥不回显） |
+| `src/agentApi.js` | 会话/附件/配置/turn SSE/场景工具的渲染层 API |
+| `src/agentSse.js` | 纯函数 SSE 解析与 fetch 流读取 |
+| `src/agentContext.js` | 纯函数：当前工程 → 紧凑场景摘要（最多 40 个对象） |
+| `src/agentTools.js` | agent 工具注册表与 `scene_to_white_model` 执行器（纯逻辑） |
 | `src/rig.js` | mixamorig 骨骼定义、动作预设、姿势克隆/插值 |
 | `src/ShotsPanel.jsx` | 镜头列表 UI（纯展示，状态由 App 传入） |
 | `src/styles.css` | 全局样式；深色主题色值集中在 `:root` 变量 |
-| `tests/*.test.mjs` | 渲染层纯逻辑测试（`node:test`） |
-| `tests/server/*.spec.ts` | 服务端配置/场景/HTTP/上游调用测试（`tsx --test`） |
+| `tests/*.test.mjs` | 渲染层纯逻辑测试（`node:test`），含 `agentSse` / `agentContext` / `agentTools` |
+| `tests/server/*.spec.ts` | 服务端配置/场景/HTTP/上游/agent SQLite/agent turn 测试（`tsx --test`） |
 | `scripts/` | 动画烘焙脚本；`scripts/assets/` 存固定版本的源资产 |
 | `public/` | 运行时静态资源（模型、品牌图），必须经 `import.meta.env.BASE_URL` 引用 |
 | `electron.vite.config.ts` | 主进程/preload/渲染层三段构建配置；渲染层源码仍在仓库根 `src/` |
@@ -81,6 +94,9 @@ MONOFORM（素形）是一个以 Electron 桌面应用为主、同时保留浏�
 9. **骨骼 id 必须稳定。** 工程 JSON、自定义姿势、AI 姿势都存 `mixamorig*` 骨骼 id；重命名或调整层级会让所有旧工程与姿势库失效。
 10. **边界值写死在这些范围：** fps ∈ {24, 25, 30}，镜头时长 1–60 秒，焦距 18–120 mm，撤销 50 步（280 ms 合并），自动保存 900 ms 防抖。缩短时长前必须先检查关键帧是否放得下，放不下就拒绝并提示，不能静默删除动画。
 11. **AI 结果必须可审计。** 服务端会校验相机与结构 evidence，不合格时保持原工程不变。不要为了“能导入”而放宽或删掉这层校验。
+12. **聊天状态不在工程里。** 会话、消息、图片附件只由本地 AI 服务的 SQLite 持久化；`App.jsx` 不把聊天写进工程 JSON 或 localStorage。会话历史全局共享，场景摘要每轮由 `src/agentContext.js` 注入。
+13. **agent 工具是白名单。** v1 只有 `scene_to_white_model`；工具执行由渲染层的 `src/agentTools.js` 注册表驱动，场景写入必须走 App 的 `setObjects`/`setCamera` 回调，保持可撤销、可自动保存。不要给模型任意属性写入、shell 或文件能力。
+14. **密钥永不回显。** `/api/agent/config` 只返回 `apiKeyConfigured` 布尔值；更换 baseUrl/provider 时必须重新填写 key，避免把旧 key 发到新域名。工具与 turn 的请求/日志里不打印密钥。
 
 ## 代码风格
 
@@ -94,9 +110,13 @@ MONOFORM（素形）是一个以 Electron 桌面应用为主、同时保留浏�
 
 - 桌面版由 Electron 主进程自动启动 AI 服务，只绑定 `127.0.0.1` 的随机端口，并生成随机 Bearer token；渲染层通过 preload 注入的 base URL + token 访问。浏览器版用 `npm run server` 启动独立服务，默认 `127.0.0.1:8891`。
 - 独立服务仍可托管 `dist/`，保留“没有 Vite dev server 时直接打开 8891”的旧工作流；Electron 不使用该静态托管。
-- 配置来源：开发/`electron-vite preview` 用 `server/model-config.local.json`（已 gitignore）；打包后用 `app.getPath('userData')/model-config.json`；`MONOFORM_MODEL_CONFIG_FILE` 可覆盖。key 文件由 `MONOFORM_MODEL_KEY_FILE` 指定（默认 `F:\hermes-sceneTo 3d\model-key.txt`）。密钥只允许存在这些本机文件，绝不写进源码、工程 JSON、截图、日志或提交。
+- 配置来源：开发/`electron-vite preview` 用 `server/model-config.local.json`（已 gitignore）；打包后用 `app.getPath('userData')/model-config.json`；`MONOFORM_MODEL_CONFIG_FILE` 可覆盖。key 文件由 `MONOFORM_MODEL_KEY_FILE` 指定（默认 `F:\hermes-sceneTo 3d\model-key.txt`）。会话 DB 由 `MONOFORM_AGENT_DB_FILE` 覆盖；桌面版默认 `app.getPath('userData')/agent.db`，独立服务默认 `.monoform-runtime/agent.db`。密钥只允许存在这些本机文件，绝不写进源码、工程 JSON、截图、日志或提交。
+- 配置键：识图沿用 `base-url` / `api-key` / `model`（兼容旧 key 文件）；对话模型用 `chat-base-url` / `chat-api-key` / `chat-model`；供应商展示用 `provider` / `chat-provider`。识图配置不完整时整体回退到对话配置（要求对话模型支持图片）。
 - 接口：`GET /api/health`、`/api/model-config`、`/api/models`；`POST /api/model-config`、`/api/generate-scene`、`/api/generate-pose`、`/api/generate-object`。`/api/health` 不需要 token；其余在 token 模式下要求 `Authorization: Bearer ...`。
-- 错误以中文 `{"error": ...}` 返回给 UI，最多截断 2000 字符；只对 5xx 与网络错误重试，4xx 立即抛出。multipart 上传上限 25 MB（图片 20 MB），配置 JSON 8 KB。
+- Agent 接口（`server/agent/routes.ts`）：`GET/POST /api/agent/config`、`POST /api/agent/models`、`GET/POST /api/agent/conversations`、`GET/DELETE /api/agent/conversations/:id`、`POST /api/agent/conversations/:id/attachments`、`GET /api/agent/attachments/:id`、`POST /api/agent/turn`（SSE）、`POST /api/agent/scene-to-white-model`。turn 事件为 `conversation`/`delta`/`message`/`error`/`done`；一次请求只做一轮 LLM 调用，工具循环由渲染层驱动（最多 4 轮工具结果）。
+- 会话 SQLite 使用 `process.getBuiltinModule('node:sqlite')` 动态取模块；Node < 22.13 或 DB 打开失败时只禁用聊天（503 中文错误），`/api/health`、场景生成、编辑/导出不受影响。DB 为 schema v1，删除会话级联删除消息与附件。
+- 场景工具端点只返回原始 scene；渲染层用 `sceneToMonoform` 映射并写入 App 状态，保持现有“追加、可撤销、可自动保存”的语义。
+- 错误以中文 `{"error": ...}` 返回给 UI，最多截断 2000 字符；只对 5xx 与网络错误重试，4xx 立即抛出。multipart 上传上限 25 MB（图片 20 MB），配置 JSON 8 KB；agent turn 256 KB。
 - 场景提示词固定在 `server/prompts/perspective.ts`；姿势/物体提示词从仓库根目录的 `skills/*.json` 读取——该目录未纳入版本控制、默认不存在，此时返回空字符串属正常现象，不要因此报错或把它加进提交。
 - 没有模型密钥、没有网络时，普通编辑、动画、导出必须照常可用——这是硬性要求。AI 服务启动失败时桌面窗口仍要打开，AI 面板给出中文错误。
 
@@ -109,7 +129,7 @@ MONOFORM（素形）是一个以 Electron 桌面应用为主、同时保留浏�
 3. `npm run build`——确认 `out/main/index.js`、`out/preload/index.cjs`、`out/renderer/index.html` 产出；`npm run build:web` 确认 `dist/` 仍可部署。
 4. `npm run dev` 或 `npm run start` 后手动走一遍：加人物/摆姿、镜头切换、关键帧记录与播放、PNG、MP4、打开与导出工程；重启应用确认自动恢复。生产模式要确认 `app://` 下内置 GLB、品牌图和 `mediabunny` 动态 chunk 都能加载。
 5. 改了工程结构时，用**改动前**导出的 `.monoform.json` 打开一次，确认旧工程仍可用。
-6. 改了 AI 相关代码时，在无密钥 / 断网环境下确认编辑器功能不受影响；有密钥时确认 CORS 预检、token 和 multipart 上传正常。
+6. 改了 AI 相关代码时，在无密钥 / 断网环境下确认编辑器功能不受影响；有密钥时确认 CORS 预检、token、multipart 上传、SSE 流式与工具调用正常。Agent 的关键手测：AI 助手 tab → 配置对话模型 → 附场景图 → 说“转白模” → 工具卡片完成、场景新增体块、原图对照出现 → 撤销可恢复 → 重启后历史/消息仍在 → 历史删除二次确认后 SQLite 级联清理。
 7. 改了打包配置时运行 `npm run dist:win`，安装后启动确认加载与下载对话框正常。
 8. 如果 Electron 报 `does not provide an export named 'BrowserWindow'`，通常是终端设置了 `ELECTRON_RUN_AS_NODE`；清除该变量后再启动。
 
@@ -119,7 +139,7 @@ MONOFORM（素形）是一个以 Electron 桌面应用为主、同时保留浏�
 
 - 发布分支是 `master`（由 `main` 合并 `develop` 后建立）；上线 = 合入 `master` 并 push，Actions 构建后发布到 GitHub Pages。日常开发常在 `develop`，不要直接向 `master` 强推。
 - `package-lock.json` 是 CI 使用的锁文件；`pnpm-lock.yaml` 已随 `develop` 进入仓库，但 CI 仍以 npm 锁文件为准。改动依赖时两个锁文件都要更新（`npm install` + `pnpm install --lockfile-only`）。
-- 本机 Node 要求 `>=20.19.0`；Electron 40 是仍支持 Node 20 工具链的最新主版本，不要直接升到 Electron 41+（其安装依赖要求 Node 22.12）。
+- 本机 Node 要求 `>=22.13.0`（`node:sqlite` 自该版本起无需实验 flag）；Electron 40 自带 Node 24，桌面端不受影响。Electron 40 保持现状，不要为了 Node 20 兼容性升级/降级运行时。
 - 本仓库 `origin` 指向 `nivenice/monoform-previs-studio`，`upstream` 是原作者仓库 `GuiYi-Xi/monoform-previs-studio`；README 开头保留了原仓库地址说明。
 - 替换模型资产时，同步更新 `public/models/ANIMATION_SOURCES.md` 的出处与许可证，并保留 `scripts/assets/` 里的固定源文件，保证可离线重建。
 

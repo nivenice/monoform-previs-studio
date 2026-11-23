@@ -102,6 +102,7 @@ test('CORS preflight allows localhost origins and makes private-network requests
   assert.equal(response.status, 204)
   assert.equal(response.headers.get('access-control-allow-origin'), '*')
   assert.match(response.headers.get('access-control-allow-headers') || '', /authorization/)
+  assert.match(response.headers.get('access-control-allow-methods') || '', /DELETE/)
   assert.equal(response.headers.get('access-control-allow-private-network'), 'true')
 })
 

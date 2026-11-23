@@ -43,7 +43,7 @@ export function createMainWindow(runtime: RuntimeInfo): BrowserWindow {
     backgroundColor: '#181817',
     show: false,
     autoHideMenuBar: true,
-    title: 'MONOFORM · 素形白模预演工作台',
+    title: 'MONOFORM · AGENT',
     webPreferences: {
       preload,
       sandbox: true,

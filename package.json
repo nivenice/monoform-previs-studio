@@ -2,7 +2,7 @@
   "name": "monoform-previs-studio",
   "private": true,
   "version": "0.6.0",
-  "description": "MONOFORM · 素形白模预演工作台",
+  "description": "MONOFORM · AGENT 白模预演工作台",
   "main": "./out/main/index.js",
   "type": "module",
   "engines": {

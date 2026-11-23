@@ -1,10 +1,10 @@
-# MONOFORM 使用说明
+# MONOFORM · AGENT 使用说明
 
-MONOFORM 是一个面向分镜、构图和镜头预演的三维白模工作台。它提供 Electron 桌面应用和浏览器版本，适合先用低成本的白模人物、粗模场景和摄像机，把镜头关系、走位和动作节奏确定下来，再进入正式制作。项目还提供可选的本地 AI 助手：可以通过对话把场景图转成可编辑白模，但生成结果必须在画布中复核和调整。
+MONOFORM · AGENT 是一个面向分镜、构图和镜头预演的三维白模工作台。它提供 Electron 桌面应用和浏览器版本，适合先用低成本的白模人物、粗模场景和摄像机，把镜头关系、走位和动作节奏确定下来，再进入正式制作。项目还提供可选的本地 AI 助手：可以通过对话把场景图转成可编辑白模，但生成结果必须在画布中复核和调整。
 
 ## 1. 界面总览
 
-![MONOFORM 工作台总览](screenshots/monoform-overview.png)
+![MONOFORM · AGENT 工作台总览](screenshots/monoform-overview.png)
 
 | 区域 | 用途 |
 | --- | --- |
@@ -216,9 +216,14 @@ MONOFORM 是一个面向分镜、构图和镜头预演的三维白模工作台�
 
 1. 桌面版应用会自动启动本机 AI 服务；浏览器版先运行 `npm run server`。
 2. 打开右侧「AI 助手」tab，点顶部齿轮打开「AI 模型设置」：填写对话模型的供应商/API 地址/API Key/模型；对话模型需支持 OpenAI 兼容的 tools 调用。识图模型可选，留空则复用对话模型（此时对话模型需支持图片）。
+
+![AI 模型设置](screenshots/monoform-agent-config.png)
+
 3. 在新的空白对话里点回形针选择场景图，或直接 Ctrl+V 粘贴 / 拖拽到输入框；输入“把这张图转成白模”并发送。
 4. 助手会先流式输出文字，再调用默认工具 `scene_to_white_model`；工具卡片完成后，场景会新增可编辑体块，右下监看器和视口同步更新，视口左下出现原图对照。结果可用 `Ctrl+Z` 撤销，也会随工程自动保存。
 5. 顶部「历史」下拉可以切换会话；每条会话后的垃圾桶会先出现行内确认，确认后删除 SQLite 中的消息与附件。新对话默认是空白草稿，不会自动恢复上次 tab 或上下文。
+
+![会话历史](screenshots/monoform-agent-history.png)
 
 开发时 AI 配置写入 `server/model-config.local.json`（已被 Git 忽略）；桌面安装版写入应用数据目录的 `model-config.json`。会话数据库在桌面版的应用数据目录 `agent.db`，独立服务默认在 `.monoform-runtime/agent.db`。不要把 API 密钥写入仓库、工程 JSON 或公开截图。
 

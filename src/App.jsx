@@ -2660,7 +2660,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand-mark">
           <span className="brand-glyph"><img src={BRAND_MARK_URL} alt="" /></span>
-          <div><strong>MONOFORM</strong><small>PREVIS STUDIO · 白模预演</small></div>
+          <div><strong>MONOFORM</strong><small>AGENT · 白模预演</small></div>
         </div>
         <nav className="top-actions">
           <button onClick={resetProject}><Plus size={14} /> 新建</button>

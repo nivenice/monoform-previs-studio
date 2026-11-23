@@ -30,7 +30,7 @@ export const AGENT_TOOLS = [
 export function buildSystemPrompt(sceneContext = ''): string {
   const context = String(sceneContext || '').slice(0, 16000)
   return [
-    '你是 MONOFORM（素形）白模预演工作台的 AI 助手。MONOFORM 用来搭建白模场景、摆放人物、管理镜头关键帧并导出 PNG/MP4。',
+    '你是 MONOFORM · AGENT 白模预演工作台的 AI 助手。MONOFORM 用来搭建白模场景、摆放人物、管理镜头关键帧并导出 PNG/MP4。',
     '',
     '你可以使用工具 scene_to_white_model 把用户提供的场景参考图转换成可编辑白模体块。规则：',
     '1. 只有当用户明确要求“场景转白模 / 把这张图生成白模 / 根据这张图搭场景”，并且本轮用户消息带有图片附件时，才调用工具。',

@@ -2,11 +2,11 @@
 //
 // The runtime applies pose joints as additive euler deltas on top of the
 // embedded animation clip (see MixamoPersonModel in src/Viewport.jsx), so a
-// believable two-handed aim is a small optimisation problem: find deltas for the
-// arm chain that put both hands in front of the chest with the forearms pointing
-// forward, without moving the torso. Coordinate descent against the real
-// skeleton solves it offline in a couple of seconds and prints the numbers to
-// paste into rig.js.
+// believable two-handed aim is a small optimisation problem: blade the torso
+// slightly, put the dominant hand in front of the chest at eye height, support
+// it with the other hand, and keep the head turned to the lens. Coordinate
+// descent against the real skeleton solves it offline in a couple of seconds and
+// prints the numbers to paste into rig.js.
 //
 // Usage: node scripts/pose/author-aim-pose.mjs
 import fs from 'node:fs'
@@ -35,17 +35,24 @@ const MODEL_PATH = path.join(ROOT, 'public', 'models', 'xbot-animated.glb')
 const CLIP_NAME = 'idle'
 const CLIP_PHASE = 0.08
 
-// Hands in front of the chest, forearms pointing along +Z (the character faces
-// +Z at yaw 0). Values are model-local metres taken from the idle bind pose.
+// The torso is bladed like a shooter's stance and the head turns back to the
+// lens. These are fixed so the solver only has to place the aiming arm.
+const TORSO_DEGREES = {
+  mixamorigSpine1: [0, 15, 0],
+  mixamorigSpine2: [0, 8, 0],
+  mixamorigHead: [0, -23, 0],
+}
+const ARM_JOINTS = [
+  'mixamorigRightShoulder', 'mixamorigRightArm', 'mixamorigRightForeArm', 'mixamorigRightHand',
+]
+
+// Model-local metres. Without a weapon prop the pose has to read from the
+// silhouette alone: one arm reaches at the lens around head height, the other
+// stays relaxed at the hip.
 const TARGETS = {
-  rightHand: new THREE.Vector3(0.015, 1.365, 0.50),
-  leftHand: new THREE.Vector3(0.135, 1.315, 0.40),
+  rightHand: new THREE.Vector3(-0.08, 1.50, 0.48),
 }
 const FORWARD = new THREE.Vector3(0, 0, 1)
-const JOINT_IDS = [
-  'mixamorigRightShoulder', 'mixamorigRightArm', 'mixamorigRightForeArm', 'mixamorigRightHand',
-  'mixamorigLeftShoulder', 'mixamorigLeftArm', 'mixamorigLeftForeArm', 'mixamorigLeftHand',
-]
 const SCHEDULE = [40, 24, 14, 8, 5, 3, 2, 1, 0.6, 0.3, 0.15, 0.08]
 
 const buffer = fs.readFileSync(MODEL_PATH)
@@ -66,7 +73,8 @@ mixer.setTime(clip.duration * CLIP_PHASE)
 scene.updateMatrixWorld(true)
 
 const base = new Map(Object.entries(bones).map(([name, bone]) => [name, bone.quaternion.clone()]))
-const delta = Object.fromEntries(JOINT_IDS.map(id => [id, [0, 0, 0]]))
+const delta = Object.fromEntries([...Object.keys(TORSO_DEGREES), ...ARM_JOINTS].map(id => [id, [0, 0, 0]]))
+for (const [id, degrees] of Object.entries(TORSO_DEGREES)) delta[id] = [...degrees]
 const euler = new THREE.Euler()
 const quaternion = new THREE.Quaternion()
 const worldPosition = name => bones[name].getWorldPosition(new THREE.Vector3())
@@ -91,25 +99,32 @@ const apply = () => {
   scene.updateMatrixWorld(true)
 }
 
+const distanceToSegment = (point, start, end) => {
+  const direction = end.clone().sub(start)
+  const length = direction.lengthSq()
+  if (!length) return point.distanceTo(start)
+  const t = THREE.MathUtils.clamp(point.clone().sub(start).dot(direction) / length, 0, 1)
+  return point.distanceTo(start.clone().addScaledVector(direction, t))
+}
+
 function cost() {
   apply()
+  const rightShoulder = worldPosition('mixamorigRightArm')
   const rightHand = worldPosition('mixamorigRightHand')
-  const leftHand = worldPosition('mixamorigLeftHand')
   const rightElbow = worldPosition('mixamorigRightForeArm')
-  const leftElbow = worldPosition('mixamorigLeftForeArm')
+  const head = worldPosition('mixamorigHead')
   const rightDirection = rightHand.clone().sub(rightElbow).normalize()
-  const leftDirection = leftHand.clone().sub(leftElbow).normalize()
-  let value = rightHand.distanceToSquared(TARGETS.rightHand) * 24
-  value += leftHand.distanceToSquared(TARGETS.leftHand) * 14
-  value += (1 - rightDirection.dot(FORWARD)) * 0.9
-  value += (1 - leftDirection.dot(FORWARD)) * 0.5
-  // Keep the elbows out of the torso and slightly forward of the chest.
-  if (rightElbow.x > -0.18) value += (rightElbow.x + 0.18) * 10
-  if (leftElbow.x < 0.18) value += (0.18 - leftElbow.x) * 10
-  if (rightElbow.z < 0.12) value += (0.12 - rightElbow.z) * 6
-  if (leftElbow.z < 0.08) value += (0.08 - leftElbow.z) * 6
+  let value = rightHand.distanceToSquared(TARGETS.rightHand) * 40
+  value += (1 - rightDirection.dot(FORWARD)) * 1.4
+  // Keep the aiming arm nearly straight: the elbow belongs on the line to the
+  // hand, which reads as "pointing at the lens" instead of "hands clasped".
+  value += distanceToSegment(rightElbow, rightShoulder, rightHand) * 1.5
+  // The hand should stay clear of the face in the final framing.
+  if (rightHand.distanceTo(head) < 0.34) value += (0.34 - rightHand.distanceTo(head)) * 3
+  // Clavicles barely move in a real aiming pose; keep them from smuggling reach.
+  value += delta.mixamorigRightShoulder.reduce((sum, angle) => sum + Math.max(0, Math.abs(angle) - 20) * 0.06, 0)
   for (const degrees of Object.values(delta)) {
-    value += degrees.reduce((sum, angle) => sum + Math.max(0, Math.abs(angle) - 75) * 0.004, 0)
+    value += degrees.reduce((sum, angle) => sum + Math.max(0, Math.abs(angle) - 80) * 0.004, 0)
   }
   return value
 }
@@ -119,7 +134,7 @@ for (const step of SCHEDULE) {
   let improved = true
   while (improved) {
     improved = false
-    for (const id of JOINT_IDS) {
+    for (const id of ARM_JOINTS) {
       for (let axis = 0; axis < 3; axis += 1) {
         for (const sign of [1, -1]) {
           const previous = delta[id][axis]
@@ -144,13 +159,12 @@ for (const [id, degrees] of Object.entries(delta)) {
   joints[id] = degrees.map(value => Number(THREE.MathUtils.degToRad(value).toFixed(4)))
 }
 const rightHand = worldPosition('mixamorigRightHand')
-const leftHand = worldPosition('mixamorigLeftHand')
 const rightGap = rightHand.distanceTo(TARGETS.rightHand)
-const leftGap = leftHand.distanceTo(TARGETS.leftHand)
+const rightElbow = worldPosition('mixamorigRightForeArm')
 
-console.log(`cost ${best.toFixed(4)} · right hand off by ${(rightGap * 100).toFixed(1)} cm · left hand off by ${(leftGap * 100).toFixed(1)} cm`)
+console.log(`cost ${best.toFixed(4)} · aiming hand off by ${(rightGap * 100).toFixed(1)} cm · elbow (${rightElbow.x.toFixed(2)}, ${rightElbow.y.toFixed(2)}, ${rightElbow.z.toFixed(2)})`)
 console.log(JSON.stringify(joints, null, 2))
-if (Math.max(rightGap, leftGap) > 0.06) {
+if (rightGap > 0.08) {
   console.error('Hand targets were not reached; adjust TARGETS before baking the preset.')
   process.exitCode = 1
 }

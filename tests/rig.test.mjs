@@ -16,12 +16,14 @@ test('the aim pistol preset is a real, loopable pose with arm-only offsets', () 
   for (const id of Object.keys(RIG_PRESETS.aim_pistol.joints)) {
     assert.ok(jointIds.has(id), `${id} must be a known skeleton joint`)
   }
-  assert.ok(Math.hypot(...joints.mixamorigRightArm) > 0.1)
-  assert.ok(Math.hypot(...joints.mixamorigLeftArm) > 0.1)
-  // The torso and legs stay on the neutral idle deltas so the silhouette reads
-  // as a standing aim rather than a crouch.
-  assert.deepEqual(joints.mixamorigSpine2, [0, 0, 0])
-  assert.deepEqual(joints.mixamorigHead, [0, 0, 0])
+  // The aiming arm reaches at the lens and the torso blades towards it.
+  assert.ok(Math.hypot(...joints.mixamorigRightArm) > 0.3)
+  assert.ok(Math.abs(joints.mixamorigSpine1[1]) > 0.1)
+  assert.ok(Math.sign(joints.mixamorigHead[1]) !== Math.sign(joints.mixamorigSpine1[1]))
+  // The support arm and the legs stay on the neutral idle deltas so the
+  // silhouette reads as a standing aim rather than a two-handed crouch.
+  assert.deepEqual(joints.mixamorigLeftArm, [0, 0, 0])
+  assert.deepEqual(joints.mixamorigLeftForeArm, [0, 0, 0])
   assert.deepEqual(joints.mixamorigLeftUpLeg, [0, 0, 0])
 })
 

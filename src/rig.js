@@ -87,18 +87,20 @@ const FULL_SQUAT_JOINTS = {
   mixamorigRightLeg: [0.6397601162120418, -0.22522846126351503, -0.9402899567027515],
 }
 
-// `aim_pistol` is a hand-authored two-handed aim. The offsets are additive
-// euler deltas on top of the embedded `idle` clip (same convention as the squat
-// presets) and were solved offline against the X-Bot bind pose so the hands end
-// up in front of the chest pointing forward. Regenerate with
-// scripts/pose/author-aim-pose.mjs if the rig or the arm targets change.
+// `aim_pistol` is a hand-authored one-handed aim: the torso blades slightly, the
+// head turns back to the lens and the dominant arm reaches at the camera around
+// head height. Without a weapon prop the silhouette alone has to read as
+// "举枪对着镜头", which is why the support arm stays relaxed. Offsets are
+// additive euler deltas on top of the embedded `idle` clip (same convention as
+// the squat presets), solved offline against the X-Bot bind pose. Regenerate
+// with scripts/pose/author-aim-pose.mjs if the rig or the hand targets change.
 const AIM_PISTOL_JOINTS = {
-  mixamorigRightShoulder: [-0.6967, -0.0148, -0.4189],
-  mixamorigRightArm: [0.4189, 0.6981, 0],
-  mixamorigRightForeArm: [-1.101, 0.0014, 0.6096],
-  mixamorigLeftShoulder: [-0.6065, -0.1571, 0.8419],
-  mixamorigLeftArm: [-0.0929, -0.2073, -0.8229],
-  mixamorigLeftForeArm: [-0.4199, -0.9858, -0.004],
+  mixamorigSpine1: [0, 0.2618, 0],
+  mixamorigSpine2: [0, 0.1396, 0],
+  mixamorigHead: [0, -0.4014, 0],
+  mixamorigRightShoulder: [-0.3491, -0.3487, 0.3487],
+  mixamorigRightArm: [0.3128, 1.7314, 0.0293],
+  mixamorigRightForeArm: [0.1618, -0.4957, -0.6964],
 }
 
 export const RIG_PRESETS = {

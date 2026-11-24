@@ -4,6 +4,7 @@ out/
 release/
 *.tsbuildinfo
 .monoform-runtime/
+.monoform-verify/
 .playwright-cli/
 output/
 *.log

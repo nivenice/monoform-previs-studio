@@ -55,13 +55,60 @@ export const AGENT_TOOL_DEFINITIONS = [
 
 const MAX_TOOL_OUTPUT = 7000
 
+const isPlainObject = value => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+// Models occasionally emit an extra closing brace or append a field after the
+// object. Recover the longest valid prefix / a balanced object instead of
+// failing the whole tool call.
+function repairJson(text) {
+  let output = ''
+  const stack = []
+  let inString = false
+  let escaped = false
+  for (const char of text) {
+    if (inString) {
+      output += char
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') { inString = true; output += char; continue }
+    if (char === '{' || char === '[') { stack.push(char); output += char; continue }
+    if (char === '}' || char === ']') {
+      const open = stack.at(-1)
+      const matches = (char === '}' && open === '{') || (char === ']' && open === '[')
+      if (matches) { stack.pop(); output += char }
+      continue
+    }
+    output += char
+  }
+  if (inString) output += '"'
+  while (stack.length) output += stack.pop() === '{' ? '}' : ']'
+  return output
+}
+
 export function parseToolArguments(raw) {
   if (raw && typeof raw === 'object') return raw
+  const text = String(raw || '').trim()
+  if (!text) return {}
   try {
-    const parsed = JSON.parse(String(raw || '{}'))
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
-  } catch {
-    return null
+    const parsed = JSON.parse(text)
+    return isPlainObject(parsed) ? parsed : null
+  } catch (error) {
+    const position = /position (\d+)/.exec(String(error?.message || ''))
+    if (position) {
+      try {
+        const parsed = JSON.parse(text.slice(0, Number(position[1])).trim())
+        if (isPlainObject(parsed)) return parsed
+      } catch { /* fall through to the balanced repair */ }
+    }
+    try {
+      const parsed = JSON.parse(repairJson(text))
+      return isPlainObject(parsed) ? parsed : null
+    } catch {
+      return null
+    }
   }
 }
 

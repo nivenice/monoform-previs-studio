@@ -24,6 +24,13 @@ test('tool arguments are parsed defensively and a sole attachment is auto-picked
   assert.deepEqual(parseToolArguments('{"note":"保留主体"}'), { note: '保留主体' })
   assert.deepEqual(parseToolArguments({ note: 'object' }), { note: 'object' })
   assert.equal(parseToolArguments('not json'), null)
+  assert.deepEqual(parseToolArguments(''), {})
+  assert.deepEqual(parseToolArguments(undefined), {})
+  assert.equal(parseToolArguments('[1,2]'), null)
+  // Models sometimes over-close the object or append a field after it.
+  assert.deepEqual(parseToolArguments('{"targets":["actor"]}}'), { targets: ['actor'] })
+  assert.deepEqual(parseToolArguments('{"targets":["actor"]}, "action": "upsert"}'), { targets: ['actor'] })
+  assert.deepEqual(parseToolArguments('{"camera":{"frames":[{"frame":0}') , { camera: { frames: [{ frame: 0 }] } })
   assert.equal(pickAttachment({}, [attachment]).id, 'att-1')
   assert.equal(pickAttachment({ attachment_id: 'att-1' }, [attachment, { id: 'att-2' }]).id, 'att-1')
   assert.equal(pickAttachment({}, [attachment, { id: 'att-2' }]), null)

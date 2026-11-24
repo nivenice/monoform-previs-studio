@@ -87,6 +87,20 @@ const FULL_SQUAT_JOINTS = {
   mixamorigRightLeg: [0.6397601162120418, -0.22522846126351503, -0.9402899567027515],
 }
 
+// `aim_pistol` is a hand-authored two-handed aim. The offsets are additive
+// euler deltas on top of the embedded `idle` clip (same convention as the squat
+// presets) and were solved offline against the X-Bot bind pose so the hands end
+// up in front of the chest pointing forward. Regenerate with
+// scripts/pose/author-aim-pose.mjs if the rig or the arm targets change.
+const AIM_PISTOL_JOINTS = {
+  mixamorigRightShoulder: [-0.6967, -0.0148, -0.4189],
+  mixamorigRightArm: [0.4189, 0.6981, 0],
+  mixamorigRightForeArm: [-1.101, 0.0014, 0.6096],
+  mixamorigLeftShoulder: [-0.6065, -0.1571, 0.8419],
+  mixamorigLeftArm: [-0.0929, -0.2073, -0.8229],
+  mixamorigLeftForeArm: [-0.4199, -0.9858, -0.004],
+}
+
 export const RIG_PRESETS = {
   idle: { clip: 'idle', phase: 0.08, duration: 2.5, loopable: true, label: '自然站立' },
   stand_relaxed: { clip: 'idle', phase: 0.34, label: '放松站姿' },
@@ -102,6 +116,7 @@ export const RIG_PRESETS = {
   run_push_b: { clip: 'run', phase: 0.55, label: '跑步蹬地 B' },
   run_air_b: { clip: 'run', phase: 0.78, label: '跑步腾空 B' },
   sad_pose: { clip: 'sad_pose', phase: 1, label: '低头含胸（仅身体）' },
+  aim_pistol: { clip: 'idle', phase: 0.08, duration: 2.5, loopable: true, joints: AIM_PISTOL_JOINTS, label: '举枪瞄准' },
   agree: { clip: 'agree', phase: 0.48, duration: 1.8333333730697632, loopable: true, label: '点头动作（头颈）' },
   nod_down: { clip: 'agree', phase: 0.36, label: '点头低位' },
   nod_up: { clip: 'agree', phase: 0.72, label: '点头回正' },
@@ -148,6 +163,7 @@ export const RIG_PRESET_OPTIONS = Object.entries(RIG_PRESETS).map(([id, preset])
 
 export const RIG_PRESET_GROUPS = [
   { label: '基础', poses: [['idle', '自然站立'], ['stand_relaxed', '放松站姿'], ['idle_shift', '重心变化'], ['tpose', 'T 型'], ['sad_pose', '低头含胸']] },
+  { label: '动作姿势', poses: [['aim_pistol', '举枪瞄准']] },
   { label: '日常姿势', poses: [['crouch', '半蹲'], ['squat_full', '全蹲'], ['sit_prepare', '坐下准备'], ['sit_low', '半坐'], ['sit', '自然坐姿'], ['wave', '招手循环']] },
   { label: '持续动作', poses: [['walk', '行走循环'], ['run', '奔跑循环'], ['agree', '点头循环'], ['headShake', '摇头循环']] },
   { label: '行走定格', poses: [['walk_contact_a', '接触步 A'], ['walk_pass_a', '跨步 A'], ['walk_contact_b', '接触步 B'], ['walk_pass_b', '跨步 B']] },

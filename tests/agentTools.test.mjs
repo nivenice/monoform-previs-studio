@@ -1,8 +1,24 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { executeAgentTool, parseToolArguments, parseToolResult, pickAttachment } from '../src/agentTools.js'
+import { executeAgentTool, parseToolArguments, parseToolResult, pickAttachment, serializeToolOutput } from '../src/agentTools.js'
 
 const attachment = { id: 'att-1', name: 'scene.png', mime: 'image/png', file: { name: 'scene.png' } }
+
+const sceneState = () => ({
+  objects: [{ id: 'actor-lead', name: '人物 · 主角', type: 'person', bodyType: 'standard', pose: 'idle', poseTime: 0.08, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }],
+  camera: { position: [4, 2, 6], rotation: [0, 0.5, 0], focalLength: 42, aspectRatio: '16:9' },
+  keyframes: [],
+  objectKeyframes: {},
+  routeTracks: {},
+  settings: { name: '测试', fps: 24, durationSeconds: 5, loopPlayback: false },
+  shots: [],
+  activeShotId: 'shot-01',
+  activeShotName: '镜头 01',
+  currentFrame: 0,
+  fps: 24,
+  selectedId: 'actor-lead',
+  customPoses: [],
+})
 
 test('tool arguments are parsed defensively and a sole attachment is auto-picked', () => {
   assert.deepEqual(parseToolArguments('{"note":"保留主体"}'), { note: '保留主体' })
@@ -53,4 +69,68 @@ test('missing attachments, unknown tools and thrown errors become tool errors', 
   }))
   assert.equal(failed.ok, false)
   assert.equal(failed.error, '识图失败')
+})
+
+test('scene commands read the snapshot and apply their patch through the toolkit', async () => {
+  const patches = []
+  const toolkit = {
+    snapshot: () => sceneState(),
+    applyScenePatch: patch => { patches.push(patch) },
+  }
+
+  const info = parseToolResult(await executeAgentTool({ name: 'get_scene_info', arguments: '{}' }, { sceneToolkit: toolkit }))
+  assert.equal(info.ok, true)
+  assert.equal(info.objects[0].id, 'actor-lead')
+  assert.equal(patches.length, 0)
+
+  const transformed = parseToolResult(await executeAgentTool({
+    name: 'transform_objects',
+    arguments: JSON.stringify({ targets: ['actor-lead'], yawDegrees: 90, scale: 1.2 }),
+  }, { sceneToolkit: toolkit }))
+  assert.equal(transformed.ok, true)
+  assert.equal(patches.length, 1)
+  assert.deepEqual(patches[0].objects[0].scale, [1.2, 1.2, 1.2])
+  assert.equal(patches[0].selectedId, 'actor-lead')
+
+  const keyed = parseToolResult(await executeAgentTool({
+    name: 'manage_keyframes',
+    arguments: JSON.stringify({ objects: [{ target: 'actor-lead', frames: [{ frame: 0, pose: 'aim_pistol' }, { frame: 120, pose: 'aim_pistol' }] }] }),
+  }, { sceneToolkit: toolkit }))
+  assert.equal(keyed.ok, true)
+  assert.equal(patches.length, 2)
+  assert.equal(patches[1].objectKeyframes['actor-lead'].length, 2)
+  assert.equal(patches[1].currentFrame, undefined)
+})
+
+test('scene command failures and a missing toolkit become tool errors', async () => {
+  const bad = parseToolResult(await executeAgentTool({
+    name: 'transform_objects',
+    arguments: '{"targets":["missing"],"scale":2}',
+  }, { sceneToolkit: { snapshot: sceneState, applyScenePatch: () => {} } }))
+  assert.equal(bad.ok, false)
+  assert.match(bad.error, /找不到对象/)
+
+  const noToolkit = parseToolResult(await executeAgentTool({ name: 'get_scene_info', arguments: '{}' }, {}))
+  assert.equal(noToolkit.ok, false)
+  assert.match(noToolkit.error, /没有连接当前工程状态/)
+
+  const brokenJson = parseToolResult(await executeAgentTool({ name: 'set_pose', arguments: '{oops' }, {}))
+  assert.equal(brokenJson.ok, false)
+  assert.match(brokenJson.error, /JSON/)
+})
+
+test('oversized tool output stays parseable JSON under the transport limit', () => {
+  const payload = {
+    ok: true,
+    tool: 'get_scene_info',
+    objects: Array.from({ length: 200 }, (_, index) => ({ id: `obj-${index}`, name: `物体 ${index}`, position: [index, 0, 0], scale: [1, 1, 1], rotationDegrees: [0, 0, 0], keyframeFrames: [0, 1, 2] })),
+    limit: 'x'.repeat(2000),
+  }
+  const serialized = serializeToolOutput({ ok: true, tool: 'get_scene_info', result: payload })
+  assert.ok(serialized.length <= 7000)
+  const parsed = JSON.parse(serialized)
+  assert.equal(parsed.ok, true)
+  assert.ok(Array.isArray(parsed.result.objects))
+  assert.equal(parsed.result.truncated, true)
+  assert.ok(parsed.result.objects.length < 200)
 })

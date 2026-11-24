@@ -1,3 +1,5 @@
+import { RIG_PRESETS, normalizePoseId } from './rig.js'
+
 const round = value => {
   const number = Number(value)
   if (!Number.isFinite(number)) return 0
@@ -9,20 +11,46 @@ const vector = value => Array.isArray(value) && value.length === 3 ? value.map(r
 
 const shortText = (value, length = 80) => String(value || '').slice(0, length)
 
+const degrees = value => round((Number(value) || 0) * 180 / Math.PI)
+
+const degreesVector = value => Array.isArray(value) && value.length === 3 ? value.map(degrees) : []
+
+const poseLabel = pose => RIG_PRESETS[normalizePoseId(pose)]?.label || ''
+
+const frameList = frames => {
+  const sorted = (Array.isArray(frames) ? frames : []).map(value => Number(value)).filter(Number.isFinite).sort((a, b) => a - b)
+  return sorted.length > 12 ? [...sorted.slice(0, 12), '…'] : sorted
+}
+
 // The model gets a compact, read-only snapshot; full object/keyframe data stays in
-// the renderer so a long project cannot blow up the prompt.
+// the renderer so a long project cannot blow up the prompt. Detail is available
+// on demand through the get_scene_info tool.
 export function buildSceneContext(source = {}) {
   const objects = Array.isArray(source.objects) ? source.objects : []
   const maxObjects = 40
-  const listed = objects.slice(0, maxObjects).map(object => ({
-    id: shortText(object.id, 80),
-    name: shortText(object.name, 80),
-    type: shortText(object.type, 40),
-    position: vector(object.position),
-    scale: vector(object.scale),
-    ...(object.locked ? { locked: true } : {}),
-    ...(object.visible === false ? { hidden: true } : {}),
-  }))
+  const listed = objects.slice(0, maxObjects).map(object => {
+    const track = Array.isArray(source.objectKeyframes?.[object.id]) ? source.objectKeyframes[object.id] : []
+    const entry = {
+      id: shortText(object.id, 80),
+      name: shortText(object.name, 80),
+      type: shortText(object.type, 40),
+      position: vector(object.position),
+      rotationDegrees: degreesVector(object.rotation),
+      scale: vector(object.scale),
+      keyframeCount: track.length,
+      ...(track.length ? { keyframeFrames: frameList(track.map(key => key.frame)) } : {}),
+      ...(source.routeTracks?.[object.id] ? { hasRoute: true } : {}),
+      ...(object.locked ? { locked: true } : {}),
+      ...(object.visible === false ? { hidden: true } : {}),
+    }
+    if (object.type === 'person') {
+      entry.bodyType = shortText(object.bodyType || 'standard', 20)
+      entry.pose = normalizePoseId(object.pose)
+      entry.poseLabel = poseLabel(object.pose)
+      entry.continuousMotion = Boolean(object.continuousMotion)
+    }
+    return entry
+  })
   const shots = Array.isArray(source.shots)
     ? source.shots.map(shot => ({
         name: shortText(shot.name, 60),
@@ -32,6 +60,9 @@ export function buildSceneContext(source = {}) {
     : []
   const camera = source.camera && typeof source.camera === 'object' ? source.camera : {}
   const settings = source.settings && typeof source.settings === 'object' ? source.settings : {}
+  const fps = Number(source.fps) || Number(settings.fps) || 0
+  const durationSeconds = Number(settings.durationSeconds) || 0
+  const cameraKeyframes = Array.isArray(source.keyframes) ? source.keyframes : []
   return {
     project: shortText(settings.name, 60),
     activeShot: shortText(source.activeShotName, 60),
@@ -41,16 +72,21 @@ export function buildSceneContext(source = {}) {
     truncated: objects.length > maxObjects,
     camera: {
       position: vector(camera.position),
+      rotationDegrees: degreesVector(camera.rotation),
       focalLength: round(camera.focalLength),
       aspectRatio: shortText(camera.aspectRatio, 20),
+      keyframeCount: cameraKeyframes.length,
+      ...(cameraKeyframes.length ? { keyframeFrames: frameList(cameraKeyframes.map(key => key.frame)) } : {}),
       ...(Array.isArray(camera.target) ? { target: vector(camera.target) } : {}),
     },
     timeline: {
       currentFrame: Math.round(Number(source.currentFrame) || 0),
-      fps: Number(source.fps) || 0,
-      durationSeconds: Number(settings.durationSeconds) || 0,
+      fps,
+      durationSeconds,
+      totalFrames: Math.round(fps * durationSeconds),
     },
     selectedId: shortText(source.selectedId, 80),
+    tools: ['get_scene_info', 'transform_objects', 'set_pose', 'manage_keyframes', 'set_timeline'],
   }
 }
 

@@ -37,6 +37,29 @@ export function shotPreset(kind = 'medium') {
   return CAMERA_SHOT_PRESETS[kind] || CAMERA_SHOT_PRESETS.medium
 }
 
+// Subject-relative framing for the agent tools: azimuth 0° is directly in front
+// of the subject (where it faces at yaw 0), positive values move to its left.
+// The result is a static world-space camera, so a subject turning around does
+// not drag the camera with it.
+export function solveSubjectCamera(subject, options = {}) {
+  const center = vector(subject?.position, [0, 0, 0])
+  const yaw = finite(subject?.rotation?.[1], 0) + finite(options.azimuthDegrees, 0) * Math.PI / 180
+  const distance = clamp(finite(options.distance, 4.6), 0.8, 40)
+  const height = clamp(finite(options.height, 1.6), 0.2, 20)
+  const lookHeight = clamp(finite(options.lookHeight, 1.3), 0, 10)
+  const position = [
+    center[0] + Math.sin(yaw) * distance,
+    center[1] + height,
+    center[2] + Math.cos(yaw) * distance,
+  ]
+  return {
+    position,
+    rotation: rotationToward(position, [center[0], center[1] + lookHeight, center[2]]),
+    focalLength: clamp(finite(options.focalLength, 45), 18, 120),
+    aspectRatio: options.aspectRatio || '16:9',
+  }
+}
+
 export function solveFollowCamera(actor, camera, follow = {}) {
   const actorPosition = vector(actor?.position, [0, 0, 0])
   const actorRotation = vector(actor?.rotation, [0, 0, 0])

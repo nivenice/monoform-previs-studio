@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { shotPreset, solveFollowCamera } from '../src/cameraMotion.js'
+import { shotPreset, solveFollowCamera, solveSubjectCamera } from '../src/cameraMotion.js'
 
 test('follow camera re-solves position and rotation from actor frame state', () => {
   const camera = solveFollowCamera({ position: [0, 0, 0], rotation: [0, 0, 0] }, { aspectRatio: '16:9' }, { shot: 'medium' })
@@ -43,4 +43,27 @@ test('follow framing scales with subject height, including elevated roots', () =
   assert.ok(Math.abs((b.position[2]-tall.position[2])/(a.position[2]-base.position[2])-3)<1e-6)
   assert.ok(Math.abs((b.position[1]-tall.position[1])/(a.position[1]-base.position[1])-3)<1e-6)
   assert.equal(a.position[1],2+2.8)
+})
+
+test('subject framing puts 0° in front, 90° on the subject left and stays fixed while the subject turns', () => {
+  const actor = { position: [1, 0, -2], rotation: [0, 0, 0] }
+  const front = solveSubjectCamera(actor, { azimuthDegrees: 0, distance: 4, height: 1.6, lookHeight: 1.2, focalLength: 45 })
+  assert.equal(front.position[0], 1)
+  assert.equal(front.position[1], 1.6)
+  assert.equal(front.position[2], 2)
+  assert.ok(Math.abs(front.rotation[0] - Math.atan2(-0.4, 4)) < 1e-6)
+
+  const left = solveSubjectCamera(actor, { azimuthDegrees: 90, distance: 4, height: 1.6, lookHeight: 1.2 })
+  assert.ok(Math.abs(left.position[0] - 5) < 1e-9)
+  assert.ok(Math.abs(left.position[2] + 2) < 1e-9)
+
+  const turned = solveSubjectCamera({ ...actor, rotation: [0, Math.PI / 2, 0] }, { azimuthDegrees: 0, distance: 4 })
+  assert.ok(Math.abs(turned.position[0] - 5) < 1e-9)
+  assert.equal(turned.focalLength, 45)
+  assert.equal(turned.aspectRatio, '16:9')
+
+  const clamped = solveSubjectCamera(actor, { distance: 0.1, focalLength: 400, height: 99, lookHeight: 99 })
+  assert.equal(clamped.position[1], 20)
+  assert.equal(clamped.focalLength, 120)
+  assert.ok(Math.abs(clamped.position[2] + 1.2) < 1e-9)
 })

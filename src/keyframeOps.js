@@ -1,7 +1,7 @@
 // Keyframe creation and evaluation helpers shared by the editor and the agent
 // scene commands. Keeping the evaluation rules here means the AI tools write
 // into the same animation path the timeline plays back.
-import { cloneJointPose, interpolateJointPose, normalizePoseId, poseCanLoop, poseForObject, presetPhase } from './rig.js'
+import { cloneJointPose, interpolateJointPose, normalizePoseId, poseCanLoop, poseForObject, presetDefinition, presetPhase } from './rig.js'
 
 export const DEFAULT_KEYFRAME_FPS = 24
 
@@ -92,7 +92,15 @@ export function objectAtFrame(object, keyframes = [], frame, fps = DEFAULT_KEYFR
   const sorted = [...keyframes].sort((a, b) => a.frame - b.frame)
   if (!sorted.length) return object
   const motionEnabled = key => poseCanLoop(key.pose || object.pose) && (key.continuousMotion === undefined ? Boolean(object.continuousMotion) : Boolean(key.continuousMotion))
-  const sameState = (leftKey, rightKey) => normalizePoseId(leftKey.pose || object.pose) === normalizePoseId(rightKey.pose || object.pose) && motionEnabled(leftKey) === motionEnabled(rightKey)
+  // Poses can blend when they share the same baked clip sampled at the same
+  // phase (e.g. `idle` and `aim_pistol` both read the idle clip at 0.08), which
+  // lets the arm offsets interpolate into a draw instead of snapping.
+  const stateSignature = key => {
+    const pose = normalizePoseId(key.pose || object.pose)
+    const poseTime = Number.isFinite(key.poseTime) ? key.poseTime : presetPhase(pose)
+    return `${presetDefinition(pose).clip || 'bind'}|${poseTime.toFixed(6)}`
+  }
+  const sameState = (leftKey, rightKey) => stateSignature(leftKey) === stateSignature(rightKey) && motionEnabled(leftKey) === motionEnabled(rightKey)
   const stateStartFrame = key => {
     let index = sorted.indexOf(key)
     while (index > 0 && sameState(sorted[index - 1], sorted[index])) index -= 1

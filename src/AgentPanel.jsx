@@ -71,9 +71,12 @@ const mapConversationDetail = detail => {
 }
 
 function ToolCard({ call }) {
-  const label = AGENT_TOOL_DEFINITIONS.find(item => item.name === call.name)?.label || call.name || '工具'
+  const definition = AGENT_TOOL_DEFINITIONS.find(item => item.name === call.name)
+  const label = definition?.label || call.name || '工具'
   const status = call.status || 'pending'
   const result = call.result
+  const warnings = Array.isArray(result?.warnings) ? result.warnings : []
+  const warningCount = warnings.length + (Array.isArray(result?.warnings) ? 0 : (Number(result?.warnings) || 0))
   return (
     <div className={`agent-tool-card is-${status}`}>
       <div className="agent-tool-head">
@@ -83,13 +86,14 @@ function ToolCard({ call }) {
           {status === 'running' ? '执行中' : status === 'ok' ? '完成' : status === 'error' ? '失败' : '未完成'}
         </span>
       </div>
-      {status === 'running' && <small>正在分析结构并生成白模，可能需要一两分钟…</small>}
+      {status === 'running' && <small>{definition?.runningText || '正在执行…'}</small>}
       {result?.ok && (
         <small>
-          {result.message || `新增 ${Number(result.added) || 0} 个体块`}
-          {Number(result.warnings) ? ` · ${result.warnings} 条待核对` : ''}
+          {result.message || (Array.isArray(result.updated) ? `已调整 ${result.updated.length} 个对象` : '已完成')}
+          {warningCount ? ` · ${warningCount} 条提示` : ''}
         </small>
       )}
+      {result?.ok && warnings.length > 0 && <small className="agent-tool-note">{warnings.slice(0, 3).join('；')}</small>}
       {result && !result.ok && <small className="is-error">{result.error || '执行失败'}</small>}
       {!result && status === 'pending' && <small>上一次工具调用未完成；可以重新发送消息。</small>}
     </div>
@@ -128,7 +132,7 @@ function MessageBubble({ message }) {
   )
 }
 
-export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplyScene }) {
+export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplyScene, sceneToolkit }) {
   const [config, setConfig] = useState(null)
   const [conversations, setConversations] = useState([])
   const [conversationId, setConversationId] = useState('')
@@ -280,14 +284,15 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
     }
   }
 
-  const runTurnLoop = async ({ conversationId: activeId, text, attachmentIds, sceneContext, uploaded, signal }) => {
+  const runTurnLoop = async ({ conversationId: activeId, text, attachmentIds, uploaded, signal }) => {
     const abortError = () => {
       const next = new Error('已停止')
       next.name = 'AbortError'
       return next
     }
-    let payload = { conversationId: activeId, text, attachmentIds, sceneContext }
-    for (let round = 0; round < 5; round += 1) {
+    const sceneContextNow = () => stringifySceneContext(getSceneContext())
+    let payload = { conversationId: activeId, text, attachmentIds, sceneContext: sceneContextNow() }
+    for (let round = 0; round < 9; round += 1) {
       if (signal.aborted) throw abortError()
       const localId = `local-a-${Date.now()}-${round}`
       setMessages(current => [...current, { id: localId, role: 'assistant', content: '', toolCalls: [], streaming: true }])
@@ -334,6 +339,7 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
           attachments: uploaded,
           runSceneTool: args => runSceneTool({ ...args, signal }),
           applyScene: onApplyScene,
+          sceneToolkit,
           signal,
         })
         const parsed = parseToolResult(raw)
@@ -348,7 +354,7 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
         if (signal.aborted) throw abortError()
         results.push({ toolCallId: call.id, content: raw })
       }
-      payload = { conversationId: activeId, toolResults: results, sceneContext }
+      payload = { conversationId: activeId, toolResults: results, sceneContext: sceneContextNow() }
     }
     throw new Error('工具调用次数过多；请重新发送消息')
   }
@@ -403,12 +409,10 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
       }])
       setDraft('')
       setFiles([])
-      const sceneContext = stringifySceneContext(getSceneContext())
       await runTurnLoop({
         conversationId: activeId,
         text,
         attachmentIds: uploaded.map(item => item.id),
-        sceneContext,
         uploaded,
         signal: controller.signal,
       })
@@ -553,15 +557,16 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
             <strong>AI 助手</strong>
             {config?.chat?.configured ? (
               <>
-                <p>上传场景图，我可以把它转成可编辑白模；也可以问当前场景的构图与镜头。</p>
+                <p>可以直接改场景：读场景、调人物姿势与物体变换、写镜头和对象关键帧。也可以上传场景图转成白模。</p>
                 <div className="agent-suggestions">
-                  <button type="button" onClick={() => fileInputRef.current?.click()}>上传场景图 → 转白模</button>
+                  <button type="button" onClick={() => { setDraft('场景内包含一个人物模型，镜头在她的侧方，他突然转身举枪对着镜头'); textareaRef.current?.focus() }}>做一个 5 秒 007 式开场镜头</button>
                   <button type="button" onClick={() => { setDraft('当前场景里有哪些对象？'); textareaRef.current?.focus() }}>当前场景里有哪些对象？</button>
+                  <button type="button" onClick={() => fileInputRef.current?.click()}>上传场景图 → 转白模</button>
                 </div>
               </>
             ) : (
               <>
-                <p>还没有配置对话模型。配置后即可上传场景图，通过对话完成场景转白模。</p>
+                <p>还没有配置对话模型。配置后即可读写场景、制作关键帧，或上传场景图转白模。</p>
                 <button type="button" className="agent-empty-cta" onClick={() => setConfigOpen(true)}>打开模型设置</button>
               </>
             )}

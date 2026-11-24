@@ -1547,6 +1547,10 @@ export default function App() {
     sceneContextSourceRef.current = {
       objects,
       camera,
+      keyframes,
+      objectKeyframes: characterKeyframes,
+      routeTracks,
+      customPoses,
       shots,
       activeShotName: activeShot?.name || '',
       activeShotId,
@@ -1558,6 +1562,57 @@ export default function App() {
   })
 
   const getSceneContext = useCallback(() => sceneContextSourceRef.current, [])
+  // AI tools edit the project through the same setters as the UI. The ref is
+  // updated synchronously as well, so several tool calls in one assistant turn
+  // see each other's writes before React commits the next render.
+  const applyAgentScenePatch = useCallback((patch, summary) => {
+    if (!patch || typeof patch !== 'object') return
+    const source = sceneContextSourceRef.current
+    const nextSource = { ...source }
+    if (Array.isArray(patch.objects)) {
+      nextSource.objects = patch.objects
+      objectsRef.current = patch.objects
+      setObjects(patch.objects)
+      setObjectDrafts(() => ({}))
+    }
+    if (patch.camera && typeof patch.camera === 'object') {
+      nextSource.camera = patch.camera
+      setCamera(patch.camera)
+    }
+    if (Array.isArray(patch.keyframes)) {
+      nextSource.keyframes = patch.keyframes
+      setKeyframes(patch.keyframes)
+    }
+    if (patch.objectKeyframes && typeof patch.objectKeyframes === 'object') {
+      nextSource.objectKeyframes = patch.objectKeyframes
+      setCharacterKeyframes(patch.objectKeyframes)
+    }
+    if (patch.settings && typeof patch.settings === 'object') {
+      const settingsNext = normalizeProjectSettings(patch.settings)
+      nextSource.settings = settingsNext
+      nextSource.fps = settingsNext.fps
+      setSettings(settingsNext)
+      setShots(list => list.map(shot => shot.id === source.activeShotId
+        ? { ...shot, fps: settingsNext.fps, durationSeconds: settingsNext.durationSeconds, loopPlayback: settingsNext.loopPlayback }
+        : shot))
+    }
+    if (patch.selectedId) {
+      nextSource.selectedId = patch.selectedId
+      setSelectedId(patch.selectedId)
+    }
+    if (Number.isFinite(Number(patch.currentFrame))) {
+      const nextFrame = clamp(Math.round(Number(patch.currentFrame)), 0, (nextSource.settings?.fps || fps) * (nextSource.settings?.durationSeconds || settings.durationSeconds))
+      nextSource.currentFrame = nextFrame
+      currentFrameRef.current = nextFrame
+      setCurrentFrame(nextFrame)
+    }
+    sceneContextSourceRef.current = nextSource
+    if (summary?.message) setToast(summary.message)
+  }, [fps, settings.durationSeconds])
+  const agentSceneToolkit = useMemo(() => ({
+    snapshot: () => sceneContextSourceRef.current,
+    applyScenePatch: (patch, summary) => applyAgentScenePatch(patch, summary),
+  }), [applyAgentScenePatch])
   const selectInspector = useCallback(id => {
     setSelectedId(id)
     setRightTab('inspector')
@@ -2637,7 +2692,7 @@ export default function App() {
             <Inspector selected={inspectorSelected} camera={camera} objects={objects} selectedJoint={selectedJoint} customPoses={customPoses} onSelectJoint={setSelectedJoint} onUpdateObject={updateSelected} onUpdateCamera={updateCameraFromUI} onDelete={deleteSelected} onDuplicate={duplicateSelected} onFocus={focusSelected} onToggleLock={() => activeObject && updateSelected({ locked: !activeObject.locked })} onGround={groundSelected} onResetPosition={resetSelectedPosition} onResetRotation={resetSelectedRotation} onResetScale={resetSelectedScale} onSaveCustomPose={saveCustomPose} onApplyCustomPose={applyCustomPose} onDeleteCustomPose={deleteCustomPose} />
           </div>
           <div className={`right-tab-body ${rightTab === 'agent' ? '' : 'is-hidden'}`} role="tabpanel">
-            <AgentPanel getSceneContext={getSceneContext} onApplyScene={applySceneFromTool} />
+            <AgentPanel getSceneContext={getSceneContext} onApplyScene={applySceneFromTool} sceneToolkit={agentSceneToolkit} />
           </div>
         </aside>
         <Timeline

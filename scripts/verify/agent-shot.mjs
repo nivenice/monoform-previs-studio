@@ -53,8 +53,11 @@ const seekScript = frame => `(() => {
   return document.querySelector('.time-readout strong')?.textContent || false
 })()`
 
+const VIEWPORT_MODE = process.env.MONOFORM_VERIFY_VIEWPORT === '1'
+
 const monitorRectScript = `(() => {
-  const element = document.querySelector('.monitor-canvas')
+  const selector = ${JSON.stringify(VIEWPORT_MODE ? '.viewport-canvas-layer' : '.monitor-canvas')}
+  const element = document.querySelector(selector)
   if (!element) return null
   const rect = element.getBoundingClientRect()
   return {
@@ -170,8 +173,19 @@ async function main() {
     fs.writeFileSync(path.join(OUT_DIR, '007-opening-5s.monoform.json'), JSON.stringify(JSON.parse(project), null, 2))
   }
 
+  if (VIEWPORT_MODE) {
+    await win.webContents.executeJavaScript(`(() => {
+      const monitorButton = [...document.querySelectorAll('.monitor-head-actions button')].find(item => (item.title || '').includes('最小化摄像机窗口'))
+      monitorButton?.click()
+      const button = [...document.querySelectorAll('.viewport-view-options button')].find(item => (item.title || '').includes('主摄像机的实际画面'))
+      if (!button) return false
+      if (!button.classList.contains('is-active')) button.click()
+      return true
+    })()`, true)
+    await sleep(900)
+  }
   const rect = await win.webContents.executeJavaScript(monitorRectScript, true)
-  if (!rect) throw new Error('找不到摄像机监视器元素，无法截图')
+  if (!rect) throw new Error('找不到画面元素，无法截图')
   const scale = rect.scale || 1
   for (const frame of FRAMES) {
     const displayed = await win.webContents.executeJavaScript(seekScript(frame), true)

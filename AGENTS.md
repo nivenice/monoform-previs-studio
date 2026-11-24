@@ -43,7 +43,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | `server/agent/service.ts` | agent 配置、模型列表、turn/SSE、场景工具、并发与 abort |
 | `server/agent/upstream.ts` | 兼容 OpenAI 的流式 `chat/completions` 与 tool_calls 聚合 |
 | `server/agent/routes.ts` | `/api/agent/*` 路由、SSE 写事件、multipart 附件 |
-| `server/agent/prompt.ts` / `types.ts` | agent system prompt、唯一的 `scene_to_white_model` 工具、共享类型 |
+| `server/agent/prompt.ts` / `types.ts` | agent system prompt、6 个工具（`scene_to_white_model` + 5 个场景编辑工具）的 OpenAI schema、共享类型 |
 | `server/config.ts` | key 文件 / `model-config.local.json` / userData 配置读写；chat 与 vision 两套键 |
 | `server/scene.ts` | 场景规范化、结构校验、几何修复与 evidence 审计（纯逻辑） |
 | `server/upstream.ts` | 兼容 OpenAI 的模型调用、重试、超时与 JSON 解析 |
@@ -64,14 +64,18 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | `src/AgentConfigDialog.jsx` | 对话/识图两套模型配置弹窗（供应商预设、拉取模型、密钥不回显） |
 | `src/agentApi.js` | 会话/附件/配置/turn SSE/场景工具的渲染层 API |
 | `src/agentSse.js` | 纯函数 SSE 解析与 fetch 流读取 |
-| `src/agentContext.js` | 纯函数：当前工程 → 紧凑场景摘要（最多 40 个对象） |
-| `src/agentTools.js` | agent 工具注册表与 `scene_to_white_model` 执行器（纯逻辑） |
-| `src/rig.js` | mixamorig 骨骼定义、动作预设、姿势克隆/插值 |
+| `src/agentContext.js` | 纯函数：当前工程 → 紧凑场景摘要（最多 40 个对象，含关键帧帧号与动作） |
+| `src/agentTools.js` | agent 工具注册表与执行器：`scene_to_white_model` + 5 个场景编辑工具、结果截断 |
+| `src/agentSceneCommands.js` | 纯函数：`get_scene_info` / `transform_objects` / `set_pose` / `manage_keyframes` / `set_timeline` 的参数校验与状态补丁 |
+| `src/keyframeOps.js` | 纯函数：关键帧创建与求值（`objectAtFrame`、`resolveCameraAtFrame`、插值/姿势兼容规则） |
+| `src/rig.js` | mixamorig 骨骼定义、动作预设（含 `aim_pistol`）、姿势克隆/插值 |
 | `src/ShotsPanel.jsx` | 镜头列表 UI（纯展示，状态由 App 传入） |
 | `src/styles.css` | 全局样式；深色主题色值集中在 `:root` 变量 |
-| `tests/*.test.mjs` | 渲染层纯逻辑测试（`node:test`），含 `agentSse` / `agentContext` / `agentTools` |
+| `tests/*.test.mjs` | 渲染层纯逻辑测试（`node:test`），含 `agentSse` / `agentContext` / `agentTools` / `agentSceneCommands` / `keyframeOps` |
 | `tests/server/*.spec.ts` | 服务端配置/场景/HTTP/上游/agent SQLite/agent turn 测试（`tsx --test`） |
 | `scripts/` | 动画烘焙脚本；`scripts/assets/` 存固定版本的源资产 |
+| `scripts/pose/author-aim-pose.mjs` | 用真实骨架解算 `aim_pistol` 姿势的骨骼增量（改姿势后重跑并更新 `rig.js`） |
+| `scripts/verify/agent-shot.mjs` | 手动端到端验收：在真实界面里跑交付提示词、导出工程与关键帧截图（需要本机模型 key） |
 | `public/` | 运行时静态资源（模型、品牌图），必须经 `import.meta.env.BASE_URL` 引用 |
 | `electron.vite.config.ts` | 主进程/preload/渲染层三段构建配置；渲染层源码仍在仓库根 `src/` |
 | `electron-builder.yml` | Windows NSIS 安装包配置 |
@@ -95,7 +99,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 10. **边界值写死在这些范围：** fps ∈ {24, 25, 30}，镜头时长 1–60 秒，焦距 18–120 mm，撤销 50 步（280 ms 合并），自动保存 900 ms 防抖。缩短时长前必须先检查关键帧是否放得下，放不下就拒绝并提示，不能静默删除动画。
 11. **AI 结果必须可审计。** 服务端会校验相机与结构 evidence，不合格时保持原工程不变。不要为了“能导入”而放宽或删掉这层校验。
 12. **聊天状态不在工程里。** 会话、消息、图片附件只由本地 AI 服务的 SQLite 持久化；`App.jsx` 不把聊天写进工程 JSON 或 localStorage。会话历史全局共享，场景摘要每轮由 `src/agentContext.js` 注入。
-13. **agent 工具是白名单。** v1 只有 `scene_to_white_model`；工具执行由渲染层的 `src/agentTools.js` 注册表驱动，场景写入必须走 App 的 `setObjects`/`setCamera` 回调，保持可撤销、可自动保存。不要给模型任意属性写入、shell 或文件能力。
+13. **agent 工具是白名单。** 工具名以 `server/agent/prompt.ts` 的 `AGENT_TOOLS` 为准，渲染层 `src/agentTools.js` 只注册这些名字：`scene_to_white_model`、`get_scene_info`、`transform_objects`、`set_pose`、`manage_keyframes`、`set_timeline`。参数校验与补丁计算放在纯函数 `src/agentSceneCommands.js`，App 通过 `agentSceneToolkit` 的 `snapshot()` / `applyScenePatch()` 用正常 setState 落盘，保持可撤销、可自动保存；同一轮多次工具调用靠同步更新的快照看到前一次结果。不要给模型任意属性写入、删除对象、shell 或文件能力；锁定对象/轴、路线驱动的关键帧必须拒绝或跳过。
 14. **密钥永不回显。** `/api/agent/config` 只返回 `apiKeyConfigured` 布尔值；更换 baseUrl/provider 时必须重新填写 key，避免把旧 key 发到新域名。工具与 turn 的请求/日志里不打印密钥。
 
 ## 代码风格
@@ -113,7 +117,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 - 配置来源：开发/`electron-vite preview` 用 `server/model-config.local.json`（已 gitignore）；打包后用 `app.getPath('userData')/model-config.json`；`MONOFORM_MODEL_CONFIG_FILE` 可覆盖。key 文件由 `MONOFORM_MODEL_KEY_FILE` 指定（默认 `F:\hermes-sceneTo 3d\model-key.txt`）。会话 DB 由 `MONOFORM_AGENT_DB_FILE` 覆盖；桌面版默认 `app.getPath('userData')/agent.db`，独立服务默认 `.monoform-runtime/agent.db`。密钥只允许存在这些本机文件，绝不写进源码、工程 JSON、截图、日志或提交。
 - 配置键：识图沿用 `base-url` / `api-key` / `model`（兼容旧 key 文件）；对话模型用 `chat-base-url` / `chat-api-key` / `chat-model`；供应商展示用 `provider` / `chat-provider`。识图配置不完整时整体回退到对话配置（要求对话模型支持图片）。
 - 接口：`GET /api/health`、`/api/model-config`、`/api/models`；`POST /api/model-config`、`/api/generate-scene`、`/api/generate-pose`、`/api/generate-object`。`/api/health` 不需要 token；其余在 token 模式下要求 `Authorization: Bearer ...`。
-- Agent 接口（`server/agent/routes.ts`）：`GET/POST /api/agent/config`、`POST /api/agent/models`、`GET/POST /api/agent/conversations`、`GET/DELETE /api/agent/conversations/:id`、`POST /api/agent/conversations/:id/attachments`、`GET /api/agent/attachments/:id`、`POST /api/agent/turn`（SSE）、`POST /api/agent/scene-to-white-model`。turn 事件为 `conversation`/`delta`/`message`/`error`/`done`；一次请求只做一轮 LLM 调用，工具循环由渲染层驱动（最多 4 轮工具结果）。
+- Agent 接口（`server/agent/routes.ts`）：`GET/POST /api/agent/config`、`POST /api/agent/models`、`GET/POST /api/agent/conversations`、`GET/DELETE /api/agent/conversations/:id`、`POST /api/agent/conversations/:id/attachments`、`GET /api/agent/attachments/:id`、`POST /api/agent/turn`（SSE）、`POST /api/agent/scene-to-white-model`。turn 事件为 `conversation`/`delta`/`message`/`error`/`done`；一次请求只做一轮 LLM 调用，工具循环由渲染层驱动（最多 8 轮工具结果，服务端 `MAX_TOOL_ROUNDS` 同步限制；单条工具结果截断到 8000 字符）。
 - 会话 SQLite 使用 `process.getBuiltinModule('node:sqlite')` 动态取模块；Node < 22.13 或 DB 打开失败时只禁用聊天（503 中文错误），`/api/health`、场景生成、编辑/导出不受影响。DB 为 schema v1，删除会话级联删除消息与附件。
 - 场景工具端点只返回原始 scene；渲染层用 `sceneToMonoform` 映射并写入 App 状态，保持现有“追加、可撤销、可自动保存”的语义。
 - 错误以中文 `{"error": ...}` 返回给 UI，最多截断 2000 字符；只对 5xx 与网络错误重试，4xx 立即抛出。multipart 上传上限 25 MB（图片 20 MB），配置 JSON 8 KB；agent turn 256 KB。
@@ -129,7 +133,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 3. `npm run build`——确认 `out/main/index.js`、`out/preload/index.cjs`、`out/renderer/index.html` 产出；`npm run build:web` 确认 `dist/` 仍可部署。
 4. `npm run dev` 或 `npm run start` 后手动走一遍：加人物/摆姿、镜头切换、关键帧记录与播放、PNG、MP4、打开与导出工程；重启应用确认自动恢复。生产模式要确认 `app://` 下内置 GLB、品牌图和 `mediabunny` 动态 chunk 都能加载。
 5. 改了工程结构时，用**改动前**导出的 `.monoform.json` 打开一次，确认旧工程仍可用。
-6. 改了 AI 相关代码时，在无密钥 / 断网环境下确认编辑器功能不受影响；有密钥时确认 CORS 预检、token、multipart 上传、SSE 流式与工具调用正常。Agent 的关键手测：AI 助手 tab → 配置对话模型 → 附场景图 → 说“转白模” → 工具卡片完成、场景新增体块、原图对照出现 → 撤销可恢复 → 重启后历史/消息仍在 → 历史删除二次确认后 SQLite 级联清理。
+6. 改了 AI 相关代码时，在无密钥 / 断网环境下确认编辑器功能不受影响；有密钥时确认 CORS 预检、token、multipart 上传、SSE 流式与工具调用正常。Agent 的关键手测：AI 助手 tab → 配置对话模型 → 附场景图 → 说“转白模” → 工具卡片完成、场景新增体块、原图对照出现 → 撤销可恢复 → 重启后历史/消息仍在 → 历史删除二次确认后 SQLite 级联清理。场景工具的手测：`npm run test:node` 里的 `agentShotRecipe` 覆盖 5 秒侧方转身举枪配方；再跑一次真实提示词验收——“场景内包含一个人物模型，镜头在她的侧方，他突然转身举枪对着镜头，帮我完成 5 秒的镜头”，确认 `set_timeline` → `manage_keyframes` → `get_scene_info` 工具卡片依次完成、时间轴变成 5 秒 / 120 帧、人物与镜头两条轨道都有关键帧、播放能看出转身与举枪，并可用 `npx electron scripts/verify/agent-shot.mjs`（先 `npm run build:web` + `npm run server`）自动导出工程与截图。
 7. 改了打包配置时运行 `npm run dist:win`，安装后启动确认加载与下载对话框正常。
 8. 如果 Electron 报 `does not provide an export named 'BrowserWindow'`，通常是终端设置了 `ELECTRON_RUN_AS_NODE`；清除该变量后再启动。
 

@@ -95,12 +95,12 @@ const FULL_SQUAT_JOINTS = {
 // the squat presets), solved offline against the X-Bot bind pose. Regenerate
 // with scripts/pose/author-aim-pose.mjs if the rig or the hand targets change.
 const AIM_PISTOL_JOINTS = {
-  mixamorigSpine1: [0, 0.2618, 0],
-  mixamorigSpine2: [0, 0.1396, 0],
-  mixamorigHead: [0, -0.4014, 0],
-  mixamorigRightShoulder: [-0.3491, -0.3487, 0.3487],
-  mixamorigRightArm: [0.3128, 1.7314, 0.0293],
-  mixamorigRightForeArm: [0.1618, -0.4957, -0.6964],
+  mixamorigSpine1: [0, 0.1745, 0],
+  mixamorigSpine2: [0, 0.1047, 0],
+  mixamorigHead: [0, -0.2793, 0],
+  mixamorigRightShoulder: [-0.3491, -0.3491, -0.3491],
+  mixamorigRightArm: [0.8289, 1.168, -0.7124],
+  mixamorigRightForeArm: [-0.1075, -0.1286, -0.014],
 }
 
 export const RIG_PRESETS = {

@@ -38,19 +38,20 @@ const CLIP_PHASE = 0.08
 // The torso is bladed like a shooter's stance and the head turns back to the
 // lens. These are fixed so the solver only has to place the aiming arm.
 const TORSO_DEGREES = {
-  mixamorigSpine1: [0, 15, 0],
-  mixamorigSpine2: [0, 8, 0],
-  mixamorigHead: [0, -23, 0],
+  mixamorigSpine1: [0, 10, 0],
+  mixamorigSpine2: [0, 6, 0],
+  mixamorigHead: [0, -16, 0],
 }
 const ARM_JOINTS = [
   'mixamorigRightShoulder', 'mixamorigRightArm', 'mixamorigRightForeArm', 'mixamorigRightHand',
 ]
 
 // Model-local metres. Without a weapon prop the pose has to read from the
-// silhouette alone: one arm reaches at the lens around head height, the other
-// stays relaxed at the hip.
+// silhouette alone: one straight arm reaches at the lens at chest/shoulder
+// height (in front of the right shoulder so it does not cover the face), the
+// other stays relaxed at the hip.
 const TARGETS = {
-  rightHand: new THREE.Vector3(-0.08, 1.50, 0.48),
+  rightHand: new THREE.Vector3(-0.12, 1.38, 0.51),
 }
 const FORWARD = new THREE.Vector3(0, 0, 1)
 const SCHEDULE = [40, 24, 14, 8, 5, 3, 2, 1, 0.6, 0.3, 0.15, 0.08]

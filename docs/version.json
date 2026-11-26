@@ -1,0 +1,12 @@
+{
+  "version": "0.7.0",
+  "releasedAt": "2026-11-26",
+  "downloadUrl": "https://github.com/nivenice/monoform-previs-studio/raw/master/downloads/MONOFORM-0.7.0-win-x64-setup.exe",
+  "releaseNotesUrl": "https://github.com/nivenice/monoform-previs-studio/blob/master/docs/CHANGELOG.md",
+  "notes": [
+    "顶部新增「关于」按钮：查看产品说明、当前版本和更新方式。",
+    "关于面板新增「检查更新」：读取 docs/version.json 并比较当前版本与最新版本。",
+    "发现新版本后可下载 Windows 安装包，显示进度，并可直接打开安装包或所在文件夹。",
+    "新增 docs/CHANGELOG.md 与 docs/version.json，之后每次发版记录更新内容并提升版本号。"
+  ]
+}

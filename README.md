@@ -11,6 +11,7 @@ MONOFORM · AGENT 是一款面向分镜、构图和镜头预演的轻量三维�
 - **Agent 聊天**：右侧新增「AI 助手」tab，支持流式对话、停止生成、附件预览、会话历史（SQLite）与删除二次确认；对话/识图两套模型配置，内置常见 OpenAI 兼容供应商预设。
 - **对话构建场景**：通过默认工具 `scene_to_white_model`，把聊天里附上的场景参考图转成可编辑白模体块并追加到当前镜头；结果可撤销，也会随工程自动保存。
 - **预演视频**：保留多镜头、摄像机与人物双轨关键帧、跟随镜头和镜头运动，导出 PNG、MP4 预演视频或工程 JSON；桌面版提供 Electron 窗口和 Windows 安装包。
+- **版本与更新**：顶部「关于」面板显示当前版本、产品说明和更新方式，并可通过仓库中的 `docs/version.json` 检查更新、下载新的 Windows 安装包。每个版本的更新内容记录在 [docs/CHANGELOG.md](docs/CHANGELOG.md)。
 
 ## 产品概览
 
@@ -23,11 +24,13 @@ MONOFORM · AGENT 不把生成式 AI 当作最终成片工具。可选的本地 
 
 ## 桌面版下载
 
-[下载 MONOFORM · AGENT v0.6.0 Windows 安装包](<downloads/MONOFORM-0.6.0-win-x64-setup.exe>)（Windows 10/11 x64，约 93 MB）
+[下载 MONOFORM · AGENT v0.7.0 Windows 安装包](<downloads/MONOFORM-0.7.0-win-x64-setup.exe>)（Windows 10/11 x64，约 93 MB）
 
 安装包已随仓库提交，可直接点击下载；SHA-256 校验值见 [downloads/SHA256SUMS.txt](downloads/SHA256SUMS.txt)。
 
 > 安装包未做代码签名，Windows SmartScreen 可能提示“未知发布者”，选择“更多信息 → 仍要运行”即可；安装位置和是否创建桌面快捷方式可在安装向导中调整。
+
+当前版本的更新内容见 [docs/CHANGELOG.md](docs/CHANGELOG.md)。桌面版可点击顶部「关于 → 检查更新」，应用会读取仓库中的 [docs/version.json](docs/version.json) 并比较当前版本与最新发布版本。
 
 ## 界面说明
 
@@ -41,6 +44,7 @@ MONOFORM · AGENT 不把生成式 AI 当作最终成片工具。可选的本地 
 - 底部「时间轴」：分别记录摄像机与当前物体的关键帧。
 - 视口「路线绘制」：在地面上拖出人物路线，自动生成带朝向的角色关键帧；路线关键帧与手动关键帧分开管理。
 - 时间轴右侧「时间轴设置」：设置 24 / 25 / 30 FPS、1–60 秒关键帧条时长和循环播放；新建镜头默认 15 秒。
+- 顶部「关于」：查看当前版本、产品说明和更新方式，并通过「检查更新」读取 `docs/version.json` 比较最新版本。
 
 ## 使用方式
 
@@ -251,7 +255,7 @@ npm run server         # 可选：浏览器版 AI 服务，127.0.0.1:8891
 | Electron | 40.10.x；自带 Node 24，桌面端不受宿主 Node 版本影响 |
 | 打包工具 | electron-builder 26.18.x；首次打包会自动下载 NSIS / 7zip 工具 |
 | 代码签名 | 未配置，安装包未签名 |
-| 应用图标 / 更新 | 使用默认 Electron 图标，暂无自动更新 |
+| 应用图标 / 更新 | 使用默认 Electron 图标；桌面版可在「关于 → 检查更新」中读取 `docs/version.json`，下载并手动安装新版本 |
 
 首次打包如果 NSIS 工具下载较慢，可先设置镜像：
 
@@ -284,12 +288,20 @@ pnpm 11 的构建脚本放行（`allowBuilds`）和 electron-builder 的 `@elect
 ```text
 release/
   win-unpacked/                    # 免安装目录版
-  MONOFORM Setup 0.6.0.exe        # NSIS 安装包
+  MONOFORM Setup 0.7.0.exe        # NSIS 安装包
 ```
 
 预览已构建的桌面产物用 `npm run start` 或 `pnpm start`；构建浏览器版用 `npm run build:web`。
 
-为了让提交到仓库的安装包低于 GitHub 的单文件 100 MiB 限制，`electron-builder.yml` 使用 `compression: maximum`，并只保留 `zh-CN` / `en-US` 两个 Electron locale。仓库的 `downloads/` 只提交安装包和校验值；`release/win-unpacked/` 体积较大且可由打包命令重建，不入库。发布新版本时，把 `release/MONOFORM Setup <version>.exe` 复制为 `downloads/MONOFORM-<version>-win-x64-setup.exe`，重新生成 `downloads/SHA256SUMS.txt`，并更新上面的下载链接。超过 100 MiB 的安装包应改用 GitHub Releases 附件，不要直接提交到仓库。
+为了让提交到仓库的安装包低于 GitHub 的单文件 100 MiB 限制，`electron-builder.yml` 使用 `compression: maximum`，并只保留 `zh-CN` / `en-US` 两个 Electron locale。仓库的 `downloads/` 只提交安装包和校验值；`release/win-unpacked/` 体积较大且可由打包命令重建，不入库。
+
+发布新版本时：
+
+1. 在 [docs/CHANGELOG.md](docs/CHANGELOG.md) 顶部记录本次更新内容。
+2. 提升 `package.json` 的 `version`，同步 `package-lock.json`。
+3. 把 `release/MONOFORM Setup <version>.exe` 复制为 `downloads/MONOFORM-<version>-win-x64-setup.exe`，重新生成 `downloads/SHA256SUMS.txt`，并更新本文的下载链接。
+4. 更新 [docs/version.json](docs/version.json) 的 `version`、`releasedAt`、`notes` 和 `downloadUrl`，提交后应用内「检查更新」即可发现新版本。
+5. 超过 100 MiB 的安装包应改用 GitHub Releases 附件，不要直接提交到仓库。
 
 ## 主要功能
 
@@ -311,11 +323,12 @@ release/
 - 地面路线绘制、弧长重采样、角色朝向关键帧和路线关键帧所有权管理。
 - 可选的本地 AI 助手：右侧 tab、流式对话、停止生成、附件预览、会话历史（SQLite）、删除二次确认；配置对话/识图两套模型（供应商预设、拉取模型、密钥不回显）；通过默认工具 `scene_to_white_model` 把场景图转成可编辑 MONOFORM 对象。
 - PNG、MP4 和 JSON 工程导出。
+- 顶部「关于」面板显示当前版本、产品说明与更新方式；「检查更新」读取 `docs/version.json`，发现新版本后可下载安装包。
 - 浏览器自动恢复、50 步撤销与重做；桌面版与浏览器版分别使用各自的本地存储。
 
 ## 数据与隐私
 
-桌面版的工程内容和自定义姿势保存在 Electron 的本地存储（与浏览器版属于不同 origin，互不自动同步），或由用户手动导出。AI 助手会话、消息与图片附件保存在本机 SQLite，不会随工程 JSON 导出或上传。除非用户主动使用 AI 助手或场景转白模功能，工程不会自动上传网络；AI 请求只发送到用户配置的模型服务。模型配置和 API 密钥保存在本机，不进入工程文件或渲染层。
+桌面版的工程内容和自定义姿势保存在 Electron 的本地存储（与浏览器版属于不同 origin，互不自动同步），或由用户手动导出。AI 助手会话、消息与图片附件保存在本机 SQLite，不会随工程 JSON 导出或上传。除非用户主动使用 AI 助手或场景转白模功能，工程不会自动上传网络；AI 请求只发送到用户配置的模型服务。模型配置和 API 密钥保存在本机，不进入工程文件或渲染层。「关于 → 检查更新」只向 GitHub 请求版本清单，不发送工程内容，不点击就不会发起更新请求。
 
 ## 技术栈
 

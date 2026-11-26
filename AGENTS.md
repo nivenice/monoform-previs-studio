@@ -34,8 +34,10 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | --- | --- |
 | `electron/main/index.ts` | Electron 生命周期、单实例、启动本机 AI 服务、创建窗口、下载/权限策略 |
 | `electron/main/app-protocol.ts` | 生产环境的 `app://monoform/...` 协议：托管 `out/renderer`、MIME、CSP、路径穿越防护 |
-| `electron/main/window.ts` | BrowserWindow、preload、运行时参数注入、自定义标题栏（原生 caption 按钮深色 overlay）、导航与 DevTools 限制 |
-| `electron/preload/index.ts` | 通过 `contextBridge` 只暴露 `window.monoform`（api base/token/error/platform） |
+| `electron/main/window.ts` | BrowserWindow、preload、运行时参数注入（含应用版本）、自定义标题栏（原生 caption 按钮深色 overlay）、导航与 DevTools 限制 |
+| `electron/main/update-core.ts` | 纯逻辑：版本号比较、`docs/version.json` / GitHub release 清单解析、下载与外链白名单、安装包文件名 |
+| `electron/main/updater.ts` | 主进程更新检查与安装包下载 IPC（`monoform:check-updates` 等）；只下载刚刚检查到的 GitHub 地址 |
+| `electron/preload/index.ts` | 通过 `contextBridge` 只暴露 `window.monoform`（api base/token/error/platform/appVersion 与更新 IPC） |
 | `server/index.ts` | `createAiService`：配置、模型调用、场景校验、agent 服务的统一入口 |
 | `server/http.ts` | Node HTTP 服务：路由、CORS、token、multipart、静态文件、SSE 委派（独立服务用） |
 | `server/http-body.ts` | 共享 HTTP body 读取、`HttpError` 与错误/截断工具 |
@@ -64,6 +66,8 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | `src/apiClient.js` | 渲染层 JSON 请求/超时/中文网络错误归一化 |
 | `src/AgentPanel.jsx` | 右侧 AI 助手：会话历史、流式消息、工具卡片、骨骼动画师子步骤、附件输入 |
 | `src/AgentConfigDialog.jsx` | 对话/识图两套模型配置弹窗（供应商预设、拉取模型、密钥不回显） |
+| `src/AboutDialog.jsx` | 顶部「关于」面板：说明、当前版本、检查更新、下载/打开安装包与更新日志入口 |
+| `src/updateApi.js` | 渲染层更新桥：桌面版走 preload IPC，浏览器版降级为“刷新即最新”提示 |
 | `src/agentApi.js` | 会话/附件/配置/turn SSE/场景工具/骨骼动画师 SSE 的渲染层 API |
 | `src/agentSse.js` | 纯函数 SSE 解析与 fetch 流读取 |
 | `src/agentContext.js` | 纯函数：当前工程 → 紧凑场景摘要（最多 40 个对象，含关键帧帧号与动作） |
@@ -79,12 +83,14 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | `src/ShotsPanel.jsx` | 镜头列表 UI（纯展示，状态由 App 传入） |
 | `src/styles.css` | 全局样式；深色主题色值集中在 `:root` 变量 |
 | `tests/*.test.mjs` | 渲染层纯逻辑测试（`node:test`），含 `agentSse` / `agentContext` / `agentTools` / `agentSceneCommands` / `rigAgent*` / `rigSubagent` / `personBodyType` / `keyframeOps` |
-| `tests/server/*.spec.ts` | 服务端配置/场景/HTTP/上游/agent SQLite/agent turn/骨骼动画师测试（`tsx --test`） |
+| `tests/server/*.spec.ts` | 服务端配置/场景/HTTP/上游/agent SQLite/agent turn/骨骼动画师/更新清单测试（`tsx --test`） |
 | `scripts/` | 动画烘焙脚本；`scripts/assets/` 存固定版本的源资产 |
 | `scripts/pose/author-aim-pose.mjs` | 用真实骨架解算 `aim_pistol` 姿势的骨骼增量（改姿势后重跑并更新 `rig.js`） |
 | `scripts/pose/rig-axis-guide.mjs` | 用真实骨架在 idle@0.08 下探测各骨骼局部轴方向，生成 `rigPrompt.ts` 的轴向表 |
 | `scripts/verify/agent-shot.mjs` | 手动端到端验收：在真实界面里跑交付提示词、导出工程与关键帧截图（需要本机模型 key） |
 | `public/` | 运行时静态资源（模型、品牌图），必须经 `import.meta.env.BASE_URL` 引用 |
+| `docs/CHANGELOG.md` | 版本更新记录；每次发版在顶部新增条目，写清新增/改进/修复/兼容性 |
+| `docs/version.json` | 应用内「检查更新」读取的唯一清单（version/releasedAt/notes/downloadUrl），发版时与 CHANGELOG 同步 |
 | `electron.vite.config.ts` | 主进程/preload/渲染层三段构建配置；渲染层源码仍在仓库根 `src/` |
 | `electron-builder.yml` | Windows NSIS 安装包配置 |
 | `downloads/` | 提交到仓库的 Windows 安装包与 `SHA256SUMS.txt`；README 直接下载入口 |
@@ -109,6 +115,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 12. **聊天状态不在工程里。** 会话、消息、图片附件只由本地 AI 服务的 SQLite 持久化；`App.jsx` 不把聊天写进工程 JSON 或 localStorage。会话历史全局共享，场景摘要每轮由 `src/agentContext.js` 注入。
 13. **agent 工具是白名单。** 主 agent 工具名以 `server/agent/prompt.ts` 的 `AGENT_TOOLS` 为准，渲染层 `src/agentTools.js` 只注册这些名字：`scene_to_white_model`、`get_scene_info`、`transform_objects`、`set_pose`、`delegate_character_pose`、`manage_keyframes`、`set_timeline`。参数校验与补丁计算放在纯函数 `src/agentSceneCommands.js`，App 通过 `agentSceneToolkit` 的 `snapshot()` / `applyScenePatch()` 用正常 setState 落盘，保持可撤销、可自动保存；同一轮多次工具调用靠同步更新的快照看到前一次结果。`delegate_character_pose` 只能作用于标准人物，由渲染层 `src/rigSubagent.js` 调 `/api/agent/specialist/turn` 驱动子代理；子代理只注册 `server/agent/rigPrompt.ts` 的 `RIG_AGENT_TOOLS`：`get_character_state`、`get_character_keyframes`、`set_character_joints`、`write_pose_keyframes`，由 `src/rigAgentCommands.js` 校验，只能改目标人物的关节/姿态关键帧，不能改位置、朝向、镜头或时间轴。子代理请求是**无状态**的，中间消息不写入 SQLite，只有主 agent 的委派工具调用与结果进入会话历史。不要给模型任意属性写入、删除对象、shell 或文件能力；锁定对象/轴、路线驱动的关键帧必须拒绝或跳过。
 14. **密钥永不回显。** `/api/agent/config` 只返回 `apiKeyConfigured` 布尔值；更换 baseUrl/provider 时必须重新填写 key，避免把旧 key 发到新域名。工具与 turn 的请求/日志里不打印密钥。
+15. **发版必须同时更新文档、版本号和更新清单。** 每次更新先在 `docs/CHANGELOG.md` 顶部记录内容，再提升 `package.json` / `package-lock.json` 的 `version`，并同步 `docs/version.json` 的 `version` / `releasedAt` / `notes` / `downloadUrl`；安装包替换后更新 `downloads/SHA256SUMS.txt` 与 README 下载链接。检查更新只读取清单，下载地址必须经过 `electron/main/update-core.ts` 的 HTTPS 白名单，且渲染层不得直接访问外网；浏览器版保持“刷新即最新”的降级行为。
 
 ## 代码风格
 
@@ -145,12 +152,14 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 6. 改了 AI 相关代码时，在无密钥 / 断网环境下确认编辑器功能不受影响；有密钥时确认 CORS 预检、token、multipart 上传、SSE 流式与工具调用正常。Agent 的关键手测：AI 助手 tab → 配置对话模型 → 附场景图 → 说“转白模” → 工具卡片完成、场景新增体块、原图对照出现 → 撤销可恢复 → 重启后历史/消息仍在 → 历史删除二次确认后 SQLite 级联清理。场景工具的手测：`npm run test:node` 里的 `agentShotRecipe` 覆盖 5 秒侧方转身举枪配方；再跑一次真实提示词验收——“场景内包含一个人物模型，镜头在她的侧方，他突然转身举枪对着镜头，帮我完成 5 秒的镜头”，确认 `set_timeline` → `manage_keyframes` → `get_scene_info` 工具卡片依次完成、时间轴变成 5 秒 / 120 帧、人物与镜头两条轨道都有关键帧、播放能看出转身与举枪，并可用 `npx electron scripts/verify/agent-shot.mjs`（先 `npm run build:web` + `npm run server`）自动导出工程与截图。骨骼动画师手测：选中标准人物 → 说“让主角在 1 秒内抬起右手挥两下，再放下” → 出现「骨骼动画师」卡片与子步骤 → 播放可见挥手、人物朝向/镜头未被改动 → `Ctrl+Z` 可撤销；再对极简模型说同样的话，确认不会委派并给出中文说明。
 7. 改了打包配置时运行 `npm run dist:win`，安装后启动确认加载与下载对话框正常。
 8. 如果 Electron 报 `does not provide an export named 'BrowserWindow'`，通常是终端设置了 `ELECTRON_RUN_AS_NODE`；清除该变量后再启动。
+9. 改了「关于 / 检查更新」时：确认顶部「关于」显示当前 `package.json` 版本；断网点击「检查更新」给出中文网络提示且不影响编辑导出；用 `MONOFORM_UPDATE_MANIFEST_URL` 指向本地清单（清单里的 `downloadUrl` 用真实的 GitHub 安装包地址）验证“发现新版本 → 显示更新说明 → 下载进度 → 打开安装包/所在文件夹”。浏览器版点「关于」应显示版本与“刷新即最新”提示，不出现下载按钮。
 
 若本机沙箱禁止写 `node_modules`，Vite 会在 `node_modules/.vite-temp` 报 `EPERM`；这是环境限制而非仓库问题，可用 `npx vite build --configLoader runner` 验证构建是否通过。
 
 ## 发布与仓库状态
 
 - 发布分支是 `master`（由 `main` 合并 `develop` 后建立）；上线 = 合入 `master` 并 push，Actions 构建后发布到 GitHub Pages。日常开发常在 `develop`，不要直接向 `master` 强推。
+- 发版顺序：先写 `docs/CHANGELOG.md` → 提升 `package.json` / `package-lock.json` 版本 → 重新打包 → 复制安装包到 `downloads/` 并更新 `SHA256SUMS.txt` → 同步 `docs/version.json` 与 README 下载链接。`docs/version.json` 推送到 `master` 后，旧版本应用才能检查到新版本。
 - `package-lock.json` 是 CI 使用的锁文件；`pnpm-lock.yaml` 已随 `develop` 进入仓库，但 CI 仍以 npm 锁文件为准。改动依赖时两个锁文件都要更新（`npm install` + `pnpm install --lockfile-only`）。
 - 本机 Node 要求 `>=22.13.0`（`node:sqlite` 自该版本起无需实验 flag）；Electron 40 自带 Node 24，桌面端不受影响。Electron 40 保持现状，不要为了 Node 20 兼容性升级/降级运行时。
 - 本仓库 `origin` 指向 `nivenice/monoform-previs-studio`，`upstream` 是原作者仓库 `GuiYi-Xi/monoform-previs-studio`；README 开头保留了原仓库地址说明。
@@ -160,4 +169,5 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 
 - `README.md`：产品定位、功能清单与用户向的使用流程。
 - `docs/USER_GUIDE.md`：逐面板的操作手册，改 UI 行为时要与之对齐。
+- `docs/CHANGELOG.md`：版本更新记录；`docs/version.json`：应用内检查更新清单。
 - `public/models/ANIMATION_SOURCES.md`：动画资产来源与许可证。

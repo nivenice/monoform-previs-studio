@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownToLine, Axis3D, Box, BoxSelect, Camera, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleDot, Copy, Download,
-  FileImage, FileVideo2, Focus, FolderOpen, Grid3X3, Import, Link2, Lock, MousePointer2, Move3D, Pause, Play, Plus,
+  FileImage, FileVideo2, Focus, FolderOpen, Grid3X3, Import, Info, Link2, Lock, MousePointer2, Move3D, Pause, Play, Plus,
   Magnet, Maximize2, Minimize2, Minus, Redo2, RotateCcw, RotateCw, Save, Settings2, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Sun,
   ScanFace, ScanLine, Trash2, Undo2, Unlink2, UserRound, Video, ZoomIn,
   Unlock,
@@ -9,6 +9,8 @@ import {
 import { MainViewport, CameraPreview } from './Viewport.jsx'
 import { sceneToMonoform } from './sceneToMonoform.js'
 import { AgentPanel } from './AgentPanel.jsx'
+import { AboutDialog } from './AboutDialog.jsx'
+import { APP_VERSION } from './updateApi.js'
 import { pathToKeys } from './previsMotion.js'
 import { CAMERA_SHOT_PRESETS, shotPreset, solveFollowCamera } from './cameraMotion.js'
 import { ShotsPanel } from './ShotsPanel.jsx'
@@ -1422,6 +1424,7 @@ export default function App() {
   const [monitorMode, setMonitorMode] = useState('normal')
   const [editorView, setEditorView] = useState({ position: [8.5, 6.4, 9.5], target: [0, 1, 0] })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const [viewFocusRequest, setViewFocusRequest] = useState(null)
   const [toast, setToast] = useState('')
   const [sceneReferenceImage, setSceneReferenceImage] = useState('')
@@ -2574,6 +2577,7 @@ export default function App() {
           <button className="project-export-button" onClick={() => saveProject({ download: true })} disabled={exporting || capturingImage}><Download size={14} /> 导出工程</button>
           <button className="project-export-button capture-image-button" onClick={handleCaptureImage} disabled={exporting || capturingImage}><FileImage size={14} /> {capturingImage ? '截图中…' : '截图 PNG'}</button>
           <button className="export-button" onClick={handleExportMp4} disabled={exporting || capturingImage}><FileVideo2 size={14} /> {exporting ? `${exportProgress}%` : '导出 MP4'}</button>
+          <button className="about-button" onClick={() => setAboutOpen(true)} title={`关于 MONOFORM · v${APP_VERSION}`}><Info size={14} /> <span>关于</span></button>
         </div>
       </header>
 
@@ -2731,6 +2735,7 @@ export default function App() {
         </>
       )}
       {settingsOpen && <ProjectSettingsDialog settings={settings} maxKeyframeFrame={maxKeyframeFrame} onApply={applySettings} onClose={() => setSettingsOpen(false)} />}
+      {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
       {toast && <div className="toast"><span />{toast}</div>}
     </main>
   )

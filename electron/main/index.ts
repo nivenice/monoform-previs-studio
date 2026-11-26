@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, Menu, session } from 'electron'
 import { createAiService } from '../../server/index'
 import { startAiServer, type RunningAiServer } from '../../server/http'
 import { registerAppProtocol, registerAppScheme } from './app-protocol'
+import { registerUpdateHandlers } from './updater'
 import { createMainWindow, type RuntimeInfo } from './window'
 
 // Privileged custom schemes can only be registered before the app is ready.
@@ -85,6 +86,7 @@ if (!app.requestSingleInstanceLock()) {
       app.setAppUserModelId('com.monoform.previs')
       Menu.setApplicationMenu(null)
       registerSessionHandlers()
+      registerUpdateHandlers()
       const runtime = await prepareRuntime()
       registerAppProtocol(path.join(app.getAppPath(), 'out', 'renderer'))
       mainWindow = createMainWindow(runtime)

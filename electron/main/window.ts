@@ -57,6 +57,7 @@ export function createMainWindow(runtime: RuntimeInfo): BrowserWindow {
         `--monoform-api-base=${runtime.apiBaseUrl}`,
         `--monoform-api-token=${runtime.apiToken}`,
         `--monoform-ai-error=${encodeURIComponent(runtime.aiError)}`,
+        `--monoform-app-version=${app.getVersion()}`,
       ],
     },
   })

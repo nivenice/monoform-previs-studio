@@ -2,8 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { presetJoints } from '../src/rig.js'
 import {
+  GET_CHARACTER_KEYFRAMES,
   GET_CHARACTER_STATE,
   SET_CHARACTER_JOINTS,
+  readCharacterKeyframes,
   readCharacterState,
   resolveRigTarget,
   runRigCommand,
@@ -47,6 +49,19 @@ const baseState = (patch = {}) => ({
 
 const range = { start: 0, end: 120, totalFrames: 120 }
 const applyPatch = (state, patch) => ({ ...state, ...patch })
+const keyframe = (frame, patch = {}) => ({
+  frame,
+  interpolation: 'smooth',
+  position: [1, 0, 2],
+  rotation: [0, Math.PI / 4, 0],
+  scale: [1, 1, 1],
+  pose: 'idle',
+  poseTime: 0.08,
+  continuousMotion: false,
+  rigRoot: [0, 0, 0],
+  joints: presetJoints('idle'),
+  ...patch,
+})
 
 test('rig target resolution accepts selected/id and rejects minimal, locked and ambiguous targets', () => {
   assert.equal(resolveRigTarget(baseState(), 'selected').id, 'actor-lead')
@@ -159,6 +174,36 @@ test('a new in-between key inherits the interpolated transform from its neighbou
   const key = inserted.patch.objectKeyframes['actor-lead'].find(item => item.frame === 50)
   assert.ok(Math.abs(key.rotation[1] - Math.PI / 4) < 1e-6)
   assert.ok(Math.abs(key.joints.mixamorigHead[0] - 10 * Math.PI / 180) < 1e-9)
+})
+
+test('read_character_keyframes reads a range with or without joints', () => {
+  const state = baseState({
+    objectKeyframes: {
+      'actor-lead': [
+        keyframe(0),
+        keyframe(24, { rotation: [0, Math.PI / 2, 0], joints: { ...presetJoints('idle'), mixamorigRightArm: [0, 0, -0.5] } }),
+        keyframe(60),
+      ],
+    },
+  })
+  const ranged = readCharacterKeyframes(state, 'actor-lead', { startFrame: 20, endFrame: 70 })
+  assert.deepEqual(ranged.frames.map(item => item.frame), [24, 60])
+  assert.equal(ranged.frameCount, 2)
+  assert.equal(ranged.returned, 2)
+  assert.equal(ranged.truncated, false)
+  assert.equal(ranged.timeline.fps, 24)
+  assert.deepEqual(ranged.range, { startFrame: 20, endFrame: 70 })
+  assert.deepEqual(ranged.frames[0].rotationDegrees, [0, 90, 0])
+  assert.ok(ranged.frames[0].jointsDegrees.mixamorigRightArm[2] < -20)
+
+  const light = readCharacterKeyframes(state, 'actor-lead', { startFrame: 0, endFrame: 120, includeJoints: false })
+  assert.equal(light.frames.length, 3)
+  assert.equal(light.frames[0].jointsDegrees, undefined)
+  assert.deepEqual(light.frames[0].position, [1, 0, 2])
+
+  assert.equal(readCharacterKeyframes(state, 'actor-lead', { startFrame: 20, endFrame: 70 }).frameCount, 2)
+  assert.equal(runRigCommand(GET_CHARACTER_KEYFRAMES, state, { startFrame: 20, endFrame: 70 }, { targetId: 'actor-lead' }).result.frameCount, 2)
+  assert.throws(() => readCharacterKeyframes(state, 'actor-lead', { startFrame: 90, endFrame: 10 }), /帧范围/)
 })
 
 test('read_character_state reports base, current and keyframe joints after a write', () => {

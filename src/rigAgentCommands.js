@@ -14,14 +14,16 @@ import {
 import { objectAtFrame } from './keyframeOps.js'
 
 export const GET_CHARACTER_STATE = 'get_character_state'
+export const GET_CHARACTER_KEYFRAMES = 'get_character_keyframes'
 export const SET_CHARACTER_JOINTS = 'set_character_joints'
 export const WRITE_POSE_KEYFRAMES = 'write_pose_keyframes'
 
-export const RIG_TOOL_NAMES = [GET_CHARACTER_STATE, SET_CHARACTER_JOINTS, WRITE_POSE_KEYFRAMES]
+export const RIG_TOOL_NAMES = [GET_CHARACTER_STATE, GET_CHARACTER_KEYFRAMES, SET_CHARACTER_JOINTS, WRITE_POSE_KEYFRAMES]
 
 const FPS_OPTIONS = [24, 25, 30]
 const DURATION_RANGE = [1, 60]
 const MAX_FRAMES_PER_CALL = 24
+const MAX_KEYFRAMES_READ = 40
 const ALLOWED_KEYFRAME_FIELDS = new Set([
   'frame', 'preset', 'pose', 'poseTime', 'jointsPreset', 'jointsDegrees', 'interpolation', 'continuousMotion',
 ])
@@ -130,6 +132,43 @@ export function readCharacterState(state, targetId) {
   }
 }
 
+export function readCharacterKeyframes(state, targetId, rawArgs = {}) {
+  const args = camelizeKeys(rawArgs || {})
+  const person = requireRigPerson(state, targetId, { allowLocked: true })
+  const { fps, durationSeconds } = timelineOf(state)
+  const range = resolveRange(state, args.startFrame, args.endFrame)
+  const includeJoints = args.includeJoints !== false
+  const track = Array.isArray(state.objectKeyframes?.[targetId]) ? state.objectKeyframes[targetId] : []
+  const inRange = [...track]
+    .filter(key => Number(key.frame) >= range.start && Number(key.frame) <= range.end)
+    .sort((a, b) => Number(a.frame) - Number(b.frame))
+  const selected = inRange.slice(0, MAX_KEYFRAMES_READ)
+  return {
+    target: {
+      id: person.id,
+      name: person.name || person.id,
+      locked: Boolean(person.locked),
+      routeDriven: Boolean(state.routeTracks?.[targetId]),
+    },
+    timeline: { fps, durationSeconds, totalFrames: range.totalFrames, currentFrame: clamp(Math.round(Number(state.currentFrame) || 0), 0, range.totalFrames) },
+    range: { startFrame: range.start, endFrame: range.end },
+    frameCount: inRange.length,
+    returned: selected.length,
+    truncated: inRange.length > selected.length,
+    ...(inRange.length > selected.length ? { frameNumbers: inRange.map(key => Number(key.frame)) } : {}),
+    frames: selected.map(key => ({
+      frame: Number(key.frame),
+      interpolation: key.interpolation || 'smooth',
+      pose: normalizePoseId(key.pose),
+      poseTime: Number.isFinite(key.poseTime) ? key.poseTime : presetPhase(key.pose),
+      continuousMotion: Boolean(key.continuousMotion),
+      position: Array.isArray(key.position) ? key.position : [0, 0, 0],
+      rotationDegrees: (Array.isArray(key.rotation) ? key.rotation.slice(0, 3) : [0, 0, 0]).map(value => round(Number(value) * 180 / Math.PI)),
+      ...(includeJoints ? { jointsDegrees: toDegrees(key.joints) } : {}),
+    })),
+  }
+}
+
 function assertJointDegrees(jointsDegrees) {
   if (!jointsDegrees || typeof jointsDegrees !== 'object' || Array.isArray(jointsDegrees)) {
     throw new SceneCommandError('jointsDegrees 必须是 { 骨骼 id: [x, y, z] } 对象')
@@ -229,6 +268,15 @@ export function runRigCommand(name, state, rawArgs = {}, options = {}) {
   if (!targetId) throw new SceneCommandError('缺少骨骼动画师的目标人物')
   if (name === GET_CHARACTER_STATE) {
     return { result: readCharacterState(state, targetId), summary: { message: '已读取角色姿态' } }
+  }
+  if (name === GET_CHARACTER_KEYFRAMES) {
+    const result = readCharacterKeyframes(state, targetId, rawArgs)
+    return {
+      result,
+      summary: {
+        message: `已读取“${result.target.name}”的 ${result.frameCount} 个关键帧${result.truncated ? `（返回前 ${result.returned} 个，可缩小帧范围）` : ''}`,
+      },
+    }
   }
   if (name === SET_CHARACTER_JOINTS) return setCharacterJoints(state, targetId, rawArgs)
   if (name === WRITE_POSE_KEYFRAMES) return writePoseKeyframes(state, targetId, rawArgs, options)

@@ -1,11 +1,12 @@
-// Renderer-side registry for the animator subagent. Only these three names are
+// Renderer-side registry for the animator subagent. Only these four names are
 // accepted; the main agent never sees them and the subagent never receives the
 // main tools (camera, timeline, transforms).
 import { parseToolArguments } from './agentTools.js'
-import { GET_CHARACTER_STATE, RIG_TOOL_NAMES, SET_CHARACTER_JOINTS, WRITE_POSE_KEYFRAMES, runRigCommand } from './rigAgentCommands.js'
+import { GET_CHARACTER_KEYFRAMES, GET_CHARACTER_STATE, RIG_TOOL_NAMES, SET_CHARACTER_JOINTS, WRITE_POSE_KEYFRAMES, runRigCommand } from './rigAgentCommands.js'
 
 export const RIG_TOOL_DEFINITIONS = [
   { name: GET_CHARACTER_STATE, label: '读取角色姿态', description: '读取目标人物当前的姿势、关节角度和关键帧。' },
+  { name: GET_CHARACTER_KEYFRAMES, label: '读取人物关键帧', description: '读取目标人物在指定帧范围内的关键帧、姿势、朝向和关节角度。' },
   { name: SET_CHARACTER_JOINTS, label: '调整关节旋转', description: '调整人物基础姿势的骨骼角度。' },
   { name: WRITE_POSE_KEYFRAMES, label: '写入姿态关键帧', description: '按帧写入关节旋转，形成精细动作。' },
 ]
@@ -26,6 +27,12 @@ function serializeRigOutput(name, payload) {
   const compact = { ...payload }
   if (compact.state && Array.isArray(compact.state.keyframes)) {
     compact.state = { ...compact.state, keyframes: compact.state.keyframes.slice(-8), truncated: true }
+    serialized = JSON.stringify(compact)
+    if (serialized.length <= MAX_RIG_TOOL_OUTPUT) return serialized
+  }
+  if (compact.state && Array.isArray(compact.state.frames)) {
+    compact.state = { ...compact.state, frames: compact.state.frames.slice(0, 8), truncated: true }
+    compact.truncated = true
     serialized = JSON.stringify(compact)
     if (serialized.length <= MAX_RIG_TOOL_OUTPUT) return serialized
   }

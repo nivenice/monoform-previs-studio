@@ -1,12 +1,12 @@
 // Prompt and tool contract for the skeletal animator subagent.
 //
 // The subagent is deliberately narrow: it can only read one character's rig
-// state and write joint rotations through the renderer's whitelisted commands.
-// It never sees camera, timeline or transform tools, so a bad tool call cannot
-// move the character or change the shot.
+// state/keyframes and write joint rotations through the renderer's whitelisted
+// commands. It never sees camera, timeline or transform tools, so a bad tool
+// call cannot move the character or change the shot.
 const NUMBER3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 }
 
-export const RIG_TOOL_NAMES = ['get_character_state', 'set_character_joints', 'write_pose_keyframes'] as const
+export const RIG_TOOL_NAMES = ['get_character_state', 'get_character_keyframes', 'set_character_joints', 'write_pose_keyframes'] as const
 
 export const RIG_AGENT_TOOLS = [
   {
@@ -15,6 +15,22 @@ export const RIG_AGENT_TOOLS = [
       name: 'get_character_state',
       description: '重新读取目标人物当前的基础姿势、当前帧姿势、关节角度和完整关键帧轨道。上下文已经包含初始状态；写完关键帧后用它复核。',
       parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_character_keyframes',
+      description: '读取目标人物在指定帧范围内的关键帧轨道：帧号、插值、基础 pose/相位、朝向/位置，以及每帧的关节角度。规划动作、避免覆盖已有表演、或检查主助手写了哪些人物关键帧时使用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          startFrame: { type: 'number', description: '可选：读取的起始帧，默认 0。' },
+          endFrame: { type: 'number', description: '可选：读取的结束帧，默认当前镜头的 totalFrames。' },
+          includeJoints: { type: 'boolean', description: '是否返回每帧的 jointsDegrees；默认 true，只看时间/朝向时可传 false。' },
+        },
+        required: [],
+      },
     },
   },
   {
@@ -131,6 +147,7 @@ export function buildRigSystemPrompt(rigContext = ''): string {
     '',
     '工具与工作流：',
     '- 上下文已经是最新状态，不需要一上来就重复读取；需要看写完后的结果时调用 get_character_state。',
+    '- 需要完整/指定范围的人物关键帧（例如主助手已经写了转身、走位，你要在中间补骨骼）时，调用 get_character_keyframes；它返回帧号、pose/poseTime、朝向/位置和 jointsDegrees。',
     '- 静态姿势用 set_character_joints；需要随时间变化的动作、摆动、出拳、挥手用 write_pose_keyframes。',
     '- 写关键帧时一次调用尽量写完一段动作（最多 24 帧），帧号必须落在 range.startFrame–range.endFrame 内。',
     '- 如果只是细化主助手已经写好的表演，优先只给 jointsDegrees、省略 pose / poseTime：基础姿势会从相邻关键帧继承；只有在需要显式切换基础动作时才写 pose。',

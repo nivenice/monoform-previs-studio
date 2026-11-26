@@ -89,12 +89,13 @@ const baseInput = (): SpecialistTurnInput => ({
   history: [],
 })
 
-test('the main agent exposes the delegation tool and the rig agent has exactly three tools', () => {
+test('the main agent exposes the delegation tool and the rig agent has exactly four tools', () => {
   assert.ok(AGENT_TOOLS.some(tool => tool.function.name === DELEGATE_POSE))
-  assert.deepEqual(RIG_AGENT_TOOLS.map(tool => tool.function.name), ['get_character_state', 'set_character_joints', 'write_pose_keyframes'])
+  assert.deepEqual(RIG_AGENT_TOOLS.map(tool => tool.function.name), ['get_character_state', 'get_character_keyframes', 'set_character_joints', 'write_pose_keyframes'])
   const prompt = buildRigSystemPrompt('{"target":{"id":"actor-lead"}}')
   assert.match(prompt, /rig_context/)
   assert.match(prompt, /mixamorigRightForeArm/)
+  assert.match(prompt, /get_character_keyframes/)
   assert.match(prompt, /write_pose_keyframes/)
   assert.match(prompt, /局部欧拉角增量/)
 })
@@ -114,7 +115,7 @@ test('a specialist turn uses the rig prompt and tools, streams a tool call and d
   assert.match(request.messages[0].content, /rig_context/)
   assert.equal(request.messages[0].role, 'system')
   assert.equal(request.messages[1].role, 'user')
-  assert.deepEqual(request.tools.map((tool: any) => tool.function.name), ['get_character_state', 'set_character_joints', 'write_pose_keyframes'])
+  assert.deepEqual(request.tools.map((tool: any) => tool.function.name), ['get_character_state', 'get_character_keyframes', 'set_character_joints', 'write_pose_keyframes'])
   assert.equal(request.temperature, 0.2)
   assert.deepEqual(harness.service.listConversations(), [])
 

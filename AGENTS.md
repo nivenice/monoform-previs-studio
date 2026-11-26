@@ -44,7 +44,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | `server/agent/upstream.ts` | 兼容 OpenAI 的流式 `chat/completions` 与 tool_calls 聚合（可传不同 tools） |
 | `server/agent/routes.ts` | `/api/agent/*` 路由、SSE 写事件、multipart 附件、骨骼动画师 SSE |
 | `server/agent/prompt.ts` / `types.ts` | 主 agent system prompt、7 个工具（`scene_to_white_model` + 5 个场景编辑工具 + `delegate_character_pose`）的 OpenAI schema、共享类型 |
-| `server/agent/rigPrompt.ts` | 骨骼动画师 subagent 的 system prompt、3 个骨骼工具 schema、真实骨架轴向表 |
+| `server/agent/rigPrompt.ts` | 骨骼动画师 subagent 的 system prompt、4 个骨骼工具 schema、真实骨架轴向表 |
 | `server/agent/specialist.ts` | 骨骼动画师请求输入校验、history 配对校验、轮数上限 |
 | `server/config.ts` | key 文件 / `model-config.local.json` / userData 配置读写；chat 与 vision 两套键 |
 | `server/scene.ts` | 场景规范化、结构校验、几何修复与 evidence 审计（纯逻辑） |
@@ -71,7 +71,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | `src/agentSceneCommands.js` | 纯函数：`get_scene_info` / `transform_objects` / `set_pose` / `manage_keyframes` / `set_timeline` 的参数校验与状态补丁 |
 | `src/personBodyType.js` | 纯函数：人物体型归一化（标准人物 / 极简模型）与旧体型兼容 |
 | `src/rigAgentContext.js` | 纯函数：标准人物 → 骨骼动画师可读的紧凑 rig 上下文（目标、轨道、预设、骨骼层级、帧范围） |
-| `src/rigAgentCommands.js` | 纯函数：骨骼动画师的 3 个命令（读取状态、改基础关节、写姿态关键帧）与范围/字段/路线/锁定校验 |
+| `src/rigAgentCommands.js` | 纯函数：骨骼动画师的 4 个命令（读取状态、读取关键帧、改基础关节、写姿态关键帧）与范围/字段/路线/锁定校验 |
 | `src/rigAgentTools.js` | 骨骼动画师工具注册表与执行器，结果截断到 6500 字符 |
 | `src/rigSubagent.js` | 渲染层驱动的骨骼动画师循环（最多 5 轮）、进度事件、摘要与 abort |
 | `src/keyframeOps.js` | 纯函数：关键帧创建与求值（`objectAtFrame`、`resolveCameraAtFrame`、插值/姿势兼容规则） |
@@ -107,7 +107,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 10. **边界值写死在这些范围：** fps ∈ {24, 25, 30}，镜头时长 1–60 秒，焦距 18–120 mm，撤销 50 步（280 ms 合并），自动保存 900 ms 防抖。缩短时长前必须先检查关键帧是否放得下，放不下就拒绝并提示，不能静默删除动画。
 11. **AI 结果必须可审计。** 服务端会校验相机与结构 evidence，不合格时保持原工程不变。不要为了“能导入”而放宽或删掉这层校验。
 12. **聊天状态不在工程里。** 会话、消息、图片附件只由本地 AI 服务的 SQLite 持久化；`App.jsx` 不把聊天写进工程 JSON 或 localStorage。会话历史全局共享，场景摘要每轮由 `src/agentContext.js` 注入。
-13. **agent 工具是白名单。** 主 agent 工具名以 `server/agent/prompt.ts` 的 `AGENT_TOOLS` 为准，渲染层 `src/agentTools.js` 只注册这些名字：`scene_to_white_model`、`get_scene_info`、`transform_objects`、`set_pose`、`delegate_character_pose`、`manage_keyframes`、`set_timeline`。参数校验与补丁计算放在纯函数 `src/agentSceneCommands.js`，App 通过 `agentSceneToolkit` 的 `snapshot()` / `applyScenePatch()` 用正常 setState 落盘，保持可撤销、可自动保存；同一轮多次工具调用靠同步更新的快照看到前一次结果。`delegate_character_pose` 只能作用于标准人物，由渲染层 `src/rigSubagent.js` 调 `/api/agent/specialist/turn` 驱动子代理；子代理只注册 `server/agent/rigPrompt.ts` 的 `RIG_AGENT_TOOLS`：`get_character_state`、`set_character_joints`、`write_pose_keyframes`，由 `src/rigAgentCommands.js` 校验，只能改目标人物的关节/姿态关键帧，不能改位置、朝向、镜头或时间轴。子代理请求是**无状态**的，中间消息不写入 SQLite，只有主 agent 的委派工具调用与结果进入会话历史。不要给模型任意属性写入、删除对象、shell 或文件能力；锁定对象/轴、路线驱动的关键帧必须拒绝或跳过。
+13. **agent 工具是白名单。** 主 agent 工具名以 `server/agent/prompt.ts` 的 `AGENT_TOOLS` 为准，渲染层 `src/agentTools.js` 只注册这些名字：`scene_to_white_model`、`get_scene_info`、`transform_objects`、`set_pose`、`delegate_character_pose`、`manage_keyframes`、`set_timeline`。参数校验与补丁计算放在纯函数 `src/agentSceneCommands.js`，App 通过 `agentSceneToolkit` 的 `snapshot()` / `applyScenePatch()` 用正常 setState 落盘，保持可撤销、可自动保存；同一轮多次工具调用靠同步更新的快照看到前一次结果。`delegate_character_pose` 只能作用于标准人物，由渲染层 `src/rigSubagent.js` 调 `/api/agent/specialist/turn` 驱动子代理；子代理只注册 `server/agent/rigPrompt.ts` 的 `RIG_AGENT_TOOLS`：`get_character_state`、`get_character_keyframes`、`set_character_joints`、`write_pose_keyframes`，由 `src/rigAgentCommands.js` 校验，只能改目标人物的关节/姿态关键帧，不能改位置、朝向、镜头或时间轴。子代理请求是**无状态**的，中间消息不写入 SQLite，只有主 agent 的委派工具调用与结果进入会话历史。不要给模型任意属性写入、删除对象、shell 或文件能力；锁定对象/轴、路线驱动的关键帧必须拒绝或跳过。
 14. **密钥永不回显。** `/api/agent/config` 只返回 `apiKeyConfigured` 布尔值；更换 baseUrl/provider 时必须重新填写 key，避免把旧 key 发到新域名。工具与 turn 的请求/日志里不打印密钥。
 
 ## 代码风格

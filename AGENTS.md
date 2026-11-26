@@ -26,7 +26,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | 重建骨骼动画 | `npm run build:animations` | 用 `scripts/assets/` 里的固定源文件重写 `public/models/xbot-animated.glb` |
 | 独立 AI 服务 | `npm run server` | `127.0.0.1:8891`，可选；同时托管 `dist/` |
 
-依赖安装遵循锁文件 `package-lock.json`（`npm ci`）。仓库根目录的 `.npmrc` 将 registry 指向 npmmirror（淘宝源）。npm 11 会在 `package.json` 的 `allowScripts` 中记录已批准的安装脚本（当前为 electron / electron-winstaller / esbuild）；pnpm 11 则在 `pnpm-workspace.yaml` 的 `allowBuilds` 中放行同一组包；升级这些包后需同步更新两处。`pnpm-workspace.yaml` 还将 app-builder-lib 的 `@electron/get` 覆盖为 `3.1.0`：electron-builder 26.18 需要该版本的 `ElectronDownloadCacheMode`，3.0.0 会导致打包时报 `ReadWrite` 未定义。README 面向用户，`docs/USER_GUIDE.md` 是操作手册。
+依赖安装遵循锁文件 `package-lock.json`（`npm ci`）。仓库根目录的 `.npmrc` 将 registry 指向 npmmirror（淘宝源）；`package.json` 的 `config.electron_builder_binaries_mirror` 让 `npm run dist:win` 从 npmmirror 下载 NSIS / winCodeSign 工具（npm 会导出 `npm_package_config_electron_builder_binaries_mirror`，electron-builder 自动读取）。npm 11 会在 `package.json` 的 `allowScripts` 中记录已批准的安装脚本（当前为 electron / electron-winstaller / esbuild）；pnpm 11 则在 `pnpm-workspace.yaml` 的 `allowBuilds` 中放行同一组包；升级这些包后需同步更新两处。`pnpm-workspace.yaml` 还将 app-builder-lib 的 `@electron/get` 覆盖为 `3.1.0`：electron-builder 26.18 需要该版本的 `ElectronDownloadCacheMode`，3.0.0 会导致打包时报 `ReadWrite` 未定义。README 面向用户，`docs/USER_GUIDE.md` 是操作手册。
 
 ## 目录与职责
 
@@ -95,7 +95,7 @@ MONOFORM · AGENT 是一个以 Electron 桌面应用为主、同时保留浏览�
 | `electron-builder.yml` | Windows NSIS 安装包配置 |
 | `downloads/` | 提交到仓库的 Windows 安装包与 `SHA256SUMS.txt`；README 直接下载入口 |
 | `pnpm-workspace.yaml` | pnpm `allowBuilds` 白名单与 `@electron/get` override |
-| `.npmrc` | npm registry 指向 npmmirror（淘宝源） |
+| `.npmrc` | npm registry 指向 npmmirror（淘宝源）；electron-builder 工具镜像在 `package.json` 的 `config` 中 |
 | `.github/workflows/deploy-pages.yml` | push 到 `master` 时 `npm ci` + `typecheck` + `test` + `npm run build:web` → GitHub Pages |
 | `docs/` | 用户手册与界面截图 |
 

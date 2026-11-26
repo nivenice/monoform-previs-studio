@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.7.0",
   "description": "MONOFORM · AGENT 白模预演工作台",
+  "config": {
+    "electron_builder_binaries_mirror": "https://npmmirror.com/mirrors/electron-builder-binaries/"
+  },
   "main": "./out/main/index.js",
   "type": "module",
   "engines": {

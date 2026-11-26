@@ -218,7 +218,7 @@ npm run start
 npm run dist:win
 ```
 
-打包脚本复用 `node_modules/electron/dist` 中已安装的 Electron，不会重复下载运行时。如果 electron-builder 下载 NSIS/签名工具很慢，可设置 `ELECTRON_BUILDER_BINARIES_MIRROR`（例如 `https://npmmirror.com/mirrors/electron-builder-binaries/`）后再执行打包。
+打包脚本复用 `node_modules/electron/dist` 中已安装的 Electron，不会重复下载运行时。`package.json` 的 `config.electron_builder_binaries_mirror` 已指向 npmmirror，`npm run dist:win` 会自动用该镜像下载 NSIS / winCodeSign 工具；如需换源，修改该配置或设置 `NPM_CONFIG_ELECTRON_BUILDER_BINARIES_MIRROR`。
 
 浏览器版：
 
@@ -257,13 +257,13 @@ npm run server         # 可选：浏览器版 AI 服务，127.0.0.1:8891
 | 代码签名 | 未配置，安装包未签名 |
 | 应用图标 / 更新 | 使用默认 Electron 图标；桌面版可在「关于 → 检查更新」中读取 `docs/version.json`，下载并手动安装新版本 |
 
-首次打包如果 NSIS 工具下载较慢，可先设置镜像：
+打包会复用 `node_modules/electron/dist`，不会重复下载 Electron 运行时；仓库根目录的 `.npmrc` 把 npm registry 指向 npmmirror，`package.json` 的 `config.electron_builder_binaries_mirror` 把 electron-builder 工具下载也指向 npmmirror，首次打包无需再手动设置环境变量。
+
+如需临时换源，可在执行打包时覆盖：
 
 ```powershell
-$env:ELECTRON_BUILDER_BINARIES_MIRROR = 'https://npmmirror.com/mirrors/electron-builder-binaries/'
+$env:NPM_CONFIG_ELECTRON_BUILDER_BINARIES_MIRROR = 'https://example.com/electron-builder-binaries/'
 ```
-
-打包会复用 `node_modules/electron/dist`，不会重复下载 Electron 运行时；仓库根目录的 `.npmrc` 也已指向 npmmirror。
 
 ### 如何打包
 

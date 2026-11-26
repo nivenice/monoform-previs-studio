@@ -210,7 +210,7 @@ export function AgentConfigDialog({ onClose, onSaved }) {
         <div className="agent-config-body">
           <ConfigSection
             title="对话模型"
-            hint="Agent 的主模型，必须支持 OpenAI 兼容的 tools 调用。"
+            hint="主助手与骨骼动画师子代理共用；必须支持 OpenAI 兼容的 tools 调用。"
             value={chat}
             onChange={setChat}
             models={chatModels}

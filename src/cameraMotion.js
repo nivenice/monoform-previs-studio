@@ -12,9 +12,8 @@ const vector = (value, fallback) => Array.isArray(value) && value.length >= 3
   ? value.slice(0, 3).map((item, index) => finite(item, fallback[index]))
   : [...fallback]
 const subjectHeight = actor => {
-  const bodyHeight = { tall: 1.12, broad: 1.04, female: 0.98, male: 1.06 }[actor?.bodyType] || 1
   const scale = vector(actor?.scale, [1, 1, 1])
-  return Math.max(0.25, bodyHeight * Math.abs(scale[1]))
+  return Math.max(0.25, Math.abs(scale[1]))
 }
 
 export function frameScaleForActor(actor, referenceHeight = 1) {

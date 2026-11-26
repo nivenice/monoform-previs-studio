@@ -1,4 +1,5 @@
 import { RIG_PRESETS, normalizePoseId } from './rig.js'
+import { normalizeBodyType } from './personBodyType.js'
 
 const round = value => {
   const number = Number(value)
@@ -44,7 +45,7 @@ export function buildSceneContext(source = {}) {
       ...(object.visible === false ? { hidden: true } : {}),
     }
     if (object.type === 'person') {
-      entry.bodyType = shortText(object.bodyType || 'standard', 20)
+      entry.bodyType = normalizeBodyType(object.bodyType)
       entry.pose = normalizePoseId(object.pose)
       entry.poseLabel = poseLabel(object.pose)
       entry.continuousMotion = Boolean(object.continuousMotion)
@@ -86,7 +87,7 @@ export function buildSceneContext(source = {}) {
       totalFrames: Math.round(fps * durationSeconds),
     },
     selectedId: shortText(source.selectedId, 80),
-    tools: ['get_scene_info', 'transform_objects', 'set_pose', 'manage_keyframes', 'set_timeline'],
+    tools: ['get_scene_info', 'transform_objects', 'set_pose', 'delegate_character_pose', 'manage_keyframes', 'set_timeline'],
   }
 }
 

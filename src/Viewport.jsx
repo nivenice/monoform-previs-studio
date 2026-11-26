@@ -11,230 +11,6 @@ const CAMERA_ID = '__shot_camera__'
 const BUILT_IN_MODEL_URL = `${import.meta.env.BASE_URL}models/xbot-animated.glb`
 const whiteMaterial = { roughness: 0.78, metalness: 0.02 }
 
-function JointSegment({ rotation = [0, 0, 0], length, startRadius, endRadius, jointRadius, color, selected, jointId, onSelectJoint, children }) {
-  const markerColor = selected ? '#d6a84f' : color
-  const limbProfile = useMemo(() => {
-    const widest = Math.max(startRadius, endRadius)
-    return [
-      new THREE.Vector2(0, -length),
-      new THREE.Vector2(endRadius * 0.82, -length),
-      new THREE.Vector2(endRadius, -length * 0.94),
-      new THREE.Vector2(endRadius * 1.08, -length * 0.78),
-      new THREE.Vector2(widest * 1.08, -length * 0.5),
-      new THREE.Vector2(startRadius * 1.07, -length * 0.2),
-      new THREE.Vector2(startRadius * 0.9, -length * 0.035),
-      new THREE.Vector2(0, 0),
-    ]
-  }, [endRadius, length, startRadius])
-  return (
-    <group rotation={rotation}>
-      <mesh castShadow>
-        <latheGeometry args={[limbProfile, 24]} />
-        <meshStandardMaterial color={color} {...whiteMaterial} />
-      </mesh>
-      <mesh
-        castShadow
-        scale={selected ? 1.08 : 0.48}
-        onPointerDown={jointId && onSelectJoint ? event => {
-          event.stopPropagation()
-          onSelectJoint(jointId)
-        } : undefined}
-      >
-        <sphereGeometry args={[jointRadius, 18, 12]} />
-        <meshStandardMaterial color={markerColor} {...whiteMaterial} />
-      </mesh>
-      {jointId && onSelectJoint && (
-        <mesh onPointerDown={event => { event.stopPropagation(); onSelectJoint(jointId) }}>
-          <sphereGeometry args={[jointRadius * 1.3, 10, 8]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-      )}
-      <group position={[0, -length, 0]}>{children}</group>
-    </group>
-  )
-}
-
-function AnatomicalTorso({ proportions, color, selected, onSelectJoint }) {
-  const torsoProfile = useMemo(() => {
-    const chest = proportions.chest
-    const waist = proportions.waist
-    return [
-      new THREE.Vector2(0, 0.05),
-      new THREE.Vector2(0.245 * waist, 0.05),
-      new THREE.Vector2(0.275 * waist, 0.16),
-      new THREE.Vector2(0.255 * waist, 0.29),
-      new THREE.Vector2(0.31 * chest, 0.4),
-      new THREE.Vector2(0.405 * chest, 0.53),
-      new THREE.Vector2(0.43 * chest, 0.62),
-      new THREE.Vector2(0.37 * chest, 0.7),
-      new THREE.Vector2(0.205 * chest, 0.75),
-      new THREE.Vector2(0, 0.75),
-    ]
-  }, [proportions.chest, proportions.waist])
-  return (
-    <mesh
-      castShadow
-      receiveShadow
-      scale={[1, proportions.height, 0.64]}
-      onPointerDown={event => { event.stopPropagation(); onSelectJoint?.('spine') }}
-    >
-      <latheGeometry args={[torsoProfile, 32]} />
-      <meshStandardMaterial color={color} {...whiteMaterial} />
-    </mesh>
-  )
-}
-
-function RiggedArm({ side, shoulder, elbow, wrist, lengths, radii, color, selectedJoint, onSelectJoint }) {
-  const direction = side === 'left' ? -1 : 1
-  const shoulderId = `${side}Shoulder`
-  const elbowId = `${side}Elbow`
-  const wristId = `${side}Wrist`
-  return (
-    <group position={[direction * lengths.shoulderX, lengths.shoulderY, 0]}>
-      <mesh castShadow scale={[radii.upper * 1.32, radii.upper * 1.12, radii.upper * 1.18]} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.(shoulderId) }}>
-        <sphereGeometry args={[1, 18, 12]} />
-        <meshStandardMaterial color={selectedJoint === shoulderId ? '#d6a84f' : color} {...whiteMaterial} />
-      </mesh>
-      <JointSegment rotation={shoulder} length={lengths.upperArm} startRadius={radii.upper} endRadius={radii.elbow} jointRadius={radii.upper * 0.72} color={color} selected={selectedJoint === shoulderId} jointId={shoulderId} onSelectJoint={onSelectJoint}>
-        <JointSegment rotation={elbow} length={lengths.lowerArm} startRadius={radii.forearm} endRadius={radii.wrist} jointRadius={radii.elbow * 0.9} color={color} selected={selectedJoint === elbowId} jointId={elbowId} onSelectJoint={onSelectJoint}>
-          <group rotation={wrist}>
-            <mesh
-              castShadow
-              position={[0, -lengths.hand * 0.46, lengths.hand * 0.04]}
-              scale={[radii.handWidth, lengths.hand * 0.5, radii.handDepth]}
-              onPointerDown={event => {
-                event.stopPropagation()
-                onSelectJoint?.(wristId)
-              }}
-            >
-              <sphereGeometry args={[1, 18, 12]} />
-              <meshStandardMaterial color={color} {...whiteMaterial} />
-            </mesh>
-            <mesh castShadow scale={selectedJoint === wristId ? 1.08 : 1} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.(wristId) }}><sphereGeometry args={[radii.wrist * 0.9, 14, 10]} /><meshStandardMaterial color={selectedJoint === wristId ? '#d6a84f' : color} {...whiteMaterial} /></mesh>
-            <mesh castShadow position={[direction * radii.handWidth * 0.78, -lengths.hand * 0.27, radii.handDepth * 0.55]} rotation={[0.15, 0, direction * -0.42]} scale={[radii.handWidth * 0.28, lengths.hand * 0.26, radii.handDepth * 0.38]}>
-              <sphereGeometry args={[1, 12, 8]} />
-              <meshStandardMaterial color={color} {...whiteMaterial} />
-            </mesh>
-          </group>
-        </JointSegment>
-      </JointSegment>
-    </group>
-  )
-}
-
-function RiggedLeg({ side, hip, knee, ankle, lengths, radii, color, selectedJoint, onSelectJoint }) {
-  const direction = side === 'left' ? -1 : 1
-  const hipId = `${side}Hip`
-  const kneeId = `${side}Knee`
-  const ankleId = `${side}Ankle`
-  return (
-    <group position={[direction * lengths.hipX, 0, 0]}>
-      <JointSegment rotation={hip} length={lengths.upperLeg} startRadius={radii.thigh} endRadius={radii.knee} jointRadius={radii.thigh * 0.7} color={color} selected={selectedJoint === hipId} jointId={hipId} onSelectJoint={onSelectJoint}>
-        <JointSegment rotation={knee} length={lengths.lowerLeg} startRadius={radii.calf} endRadius={radii.ankle} jointRadius={radii.knee * 0.92} color={color} selected={selectedJoint === kneeId} jointId={kneeId} onSelectJoint={onSelectJoint}>
-          <group rotation={ankle}>
-            <mesh castShadow position={[0, -radii.ankle * 0.32, lengths.foot * 0.42]} rotation={[Math.PI / 2, 0, 0]} scale={[1, 1, 0.82]} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.(ankleId) }}>
-              <capsuleGeometry args={[radii.footWidth, Math.max(0.04, lengths.foot - radii.footWidth * 2), 6, 16]} />
-              <meshStandardMaterial color={color} {...whiteMaterial} />
-            </mesh>
-            <mesh castShadow scale={selectedJoint === ankleId ? 1.08 : 1} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.(ankleId) }}><sphereGeometry args={[radii.ankle * 0.94, 14, 10]} /><meshStandardMaterial color={selectedJoint === ankleId ? '#d6a84f' : color} {...whiteMaterial} /></mesh>
-          </group>
-        </JointSegment>
-      </JointSegment>
-    </group>
-  )
-}
-
-function PersonModel({ bodyType = 'standard', pose = 'idle', rigRoot, joints, color = '#e8e3d8', selected = false, selectedJoint, onSelectJoint }) {
-  const proportions = {
-    standard: { height: 1, shoulder: 1, chest: 1, waist: 1, hip: 1, limb: 1, head: 1 },
-    tall: { height: 1.14, shoulder: 0.92, chest: 0.92, waist: 0.9, hip: 0.94, limb: 0.94, head: 0.94 },
-    broad: { height: 1.03, shoulder: 1.28, chest: 1.22, waist: 1.12, hip: 1.08, limb: 1.16, head: 1.04 },
-    female: { height: 0.98, shoulder: 0.9, chest: 0.98, waist: 0.84, hip: 1.16, limb: 0.9, head: 0.98 },
-    male: { height: 1.06, shoulder: 1.16, chest: 1.14, waist: 1.02, hip: 1, limb: 1.08, head: 1 },
-  }[bodyType] || { height: 1, shoulder: 1, chest: 1, waist: 1, hip: 1, limb: 1, head: 1 }
-  const rig = poseForObject({ pose, rigRoot, joints })
-  const joint = name => rig.joints[name]
-  const bodyColor = color
-  const lengths = {
-    pelvisY: 1.07 * proportions.height,
-    shoulderX: 0.41 * proportions.shoulder,
-    shoulderY: 0.61 * proportions.height,
-    hipX: 0.17 * proportions.hip,
-    upperArm: 0.39 * proportions.height,
-    lowerArm: 0.35 * proportions.height,
-    hand: 0.18 * proportions.height,
-    upperLeg: 0.55 * proportions.height,
-    lowerLeg: 0.52 * proportions.height,
-    foot: 0.27 * proportions.height,
-  }
-  const armRadii = {
-    upper: 0.118 * proportions.limb, elbow: 0.082 * proportions.limb,
-    forearm: 0.096 * proportions.limb, wrist: 0.064 * proportions.limb,
-    handWidth: 0.096 * proportions.limb, handDepth: 0.05 * proportions.limb,
-  }
-  const legRadii = {
-    thigh: 0.172 * proportions.limb, knee: 0.112 * proportions.limb,
-    calf: 0.135 * proportions.limb, ankle: 0.076 * proportions.limb,
-    footWidth: 0.1 * proportions.limb,
-  }
-  return (
-    <group position={[rig.root[0], lengths.pelvisY + rig.root[1], rig.root[2]]} rotation={joint('pelvis')}>
-      <mesh castShadow position={[0, 0.015, -0.01]} scale={[0.31 * proportions.hip, 0.19 * proportions.height, 0.23]} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.('pelvis') }}>
-        <sphereGeometry args={[1, 24, 16]} />
-        <meshStandardMaterial color={bodyColor} {...whiteMaterial} />
-      </mesh>
-      <mesh castShadow position={[-0.155 * proportions.hip, -0.035, -0.015]} scale={[0.19 * proportions.hip, 0.19 * proportions.height, 0.22]} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.('pelvis') }}>
-        <sphereGeometry args={[1, 20, 14]} />
-        <meshStandardMaterial color={bodyColor} {...whiteMaterial} />
-      </mesh>
-      <mesh castShadow position={[0.155 * proportions.hip, -0.035, -0.015]} scale={[0.19 * proportions.hip, 0.19 * proportions.height, 0.22]} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.('pelvis') }}>
-        <sphereGeometry args={[1, 20, 14]} />
-        <meshStandardMaterial color={bodyColor} {...whiteMaterial} />
-      </mesh>
-      <mesh castShadow scale={selected && selectedJoint === 'pelvis' ? 1.12 : 1} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.('pelvis') }}><sphereGeometry args={[0.07, 14, 10]} /><meshStandardMaterial color={selected && selectedJoint === 'pelvis' ? '#d6a84f' : bodyColor} {...whiteMaterial} /></mesh>
-      <group rotation={joint('spine')}>
-        <AnatomicalTorso proportions={proportions} color={bodyColor} selected={selected && selectedJoint === 'spine'} onSelectJoint={onSelectJoint} />
-        <mesh castShadow position={[0, lengths.shoulderY - 0.015, 0]} scale={[lengths.shoulderX + 0.105, 0.115 * proportions.height, 0.22]} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.('spine') }}>
-          <sphereGeometry args={[1, 24, 14]} />
-          <meshStandardMaterial color={bodyColor} {...whiteMaterial} />
-        </mesh>
-        {selected && selectedJoint === 'spine' && <mesh position={[0, 0.3 * proportions.height, -0.215]}><sphereGeometry args={[0.065, 14, 10]} /><meshStandardMaterial color="#d6a84f" {...whiteMaterial} /></mesh>}
-        <group position={[0, 0.79 * proportions.height, 0]} rotation={joint('neck')}>
-          <mesh castShadow position={[0, 0.055, 0]} scale={[0.09, 0.14, 0.085]} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.('neck') }}><cylinderGeometry args={[1, 0.88, 1, 18]} /><meshStandardMaterial color={selected && selectedJoint === 'neck' ? '#d6a84f' : bodyColor} {...whiteMaterial} /></mesh>
-          <group position={[0, 0.275 * proportions.head, 0]} onPointerDown={event => { event.stopPropagation(); onSelectJoint?.('neck') }}>
-            <mesh castShadow position={[0, 0.045, 0]} scale={[0.18 * proportions.head, 0.235 * proportions.head, 0.175 * proportions.head]}>
-              <sphereGeometry args={[1, 28, 20]} />
-              <meshStandardMaterial color={bodyColor} {...whiteMaterial} />
-            </mesh>
-            <mesh castShadow position={[0, -0.095 * proportions.head, -0.012]} scale={[0.145 * proportions.head, 0.14 * proportions.head, 0.145 * proportions.head]}>
-              <sphereGeometry args={[1, 24, 16]} />
-              <meshStandardMaterial color={bodyColor} {...whiteMaterial} />
-            </mesh>
-            <mesh castShadow position={[0, -0.005 * proportions.head, 0.17 * proportions.head]} scale={[0.045 * proportions.head, 0.065 * proportions.head, 0.07 * proportions.head]}>
-              <sphereGeometry args={[1, 16, 10]} />
-              <meshStandardMaterial color={bodyColor} {...whiteMaterial} />
-            </mesh>
-            <mesh castShadow position={[-0.175 * proportions.head, 0, 0]} scale={[0.028, 0.065, 0.035]}><sphereGeometry args={[1, 12, 8]} /><meshStandardMaterial color={bodyColor} {...whiteMaterial} /></mesh>
-            <mesh castShadow position={[0.175 * proportions.head, 0, 0]} scale={[0.028, 0.065, 0.035]}><sphereGeometry args={[1, 12, 8]} /><meshStandardMaterial color={bodyColor} {...whiteMaterial} /></mesh>
-          </group>
-        </group>
-        <RiggedArm side="left" shoulder={joint('leftShoulder')} elbow={joint('leftElbow')} wrist={joint('leftWrist')} lengths={lengths} radii={armRadii} color={bodyColor} selectedJoint={selected ? selectedJoint : null} onSelectJoint={onSelectJoint} />
-        <RiggedArm side="right" shoulder={joint('rightShoulder')} elbow={joint('rightElbow')} wrist={joint('rightWrist')} lengths={lengths} radii={armRadii} color={bodyColor} selectedJoint={selected ? selectedJoint : null} onSelectJoint={onSelectJoint} />
-      </group>
-      <RiggedLeg side="left" hip={joint('leftHip')} knee={joint('leftKnee')} ankle={joint('leftAnkle')} lengths={lengths} radii={legRadii} color={bodyColor} selectedJoint={selected ? selectedJoint : null} onSelectJoint={onSelectJoint} />
-      <RiggedLeg side="right" hip={joint('rightHip')} knee={joint('rightKnee')} ankle={joint('rightAnkle')} lengths={lengths} radii={legRadii} color={bodyColor} selectedJoint={selected ? selectedJoint : null} onSelectJoint={onSelectJoint} />
-    </group>
-  )
-}
-
-const MIXAMO_BODY_SCALES = {
-  standard: [1, 1, 1],
-  tall: [0.95, 1.12, 0.95],
-  broad: [1.14, 1.04, 1.1],
-  female: [0.94, 0.98, 0.94],
-  male: [1.08, 1.06, 1.08],
-}
-
 function dominantBoneNameFromHit(event) {
   const mesh = event.object
   const face = event.face
@@ -339,7 +115,7 @@ function MixamoIKHandle({ bone, jointId, selected, modelRoot, onBeginDrag, onDra
   )
 }
 
-function MixamoPersonModel({ bodyType = 'standard', pose = 'idle', poseTime, continuousMotion = false, animationTime = 0, rigRoot, joints, footLock = false, color = '#e8e3d8', selected = false, selectedJoint, onSelectJoint, onRotateJoint, onRotateJoints, showBoneGizmo = false, onSurfacePointerDown, onSurfacePointerMove, onSurfacePointerUp }) {
+function MixamoPersonModel({ pose = 'idle', poseTime, continuousMotion = false, animationTime = 0, rigRoot, joints, footLock = false, color = '#e8e3d8', selected = false, selectedJoint, onSelectJoint, onRotateJoint, onRotateJoints, showBoneGizmo = false, onSurfacePointerDown, onSurfacePointerMove, onSurfacePointerUp }) {
   const gltf = useGLTF(BUILT_IN_MODEL_URL)
   const orbitControls = useThree(state => state.controls)
   const camera = useThree(state => state.camera)
@@ -608,10 +384,9 @@ function MixamoPersonModel({ bodyType = 'standard', pose = 'idle', poseTime, con
     }
   }, [orbitControls])
 
-  const scale = MIXAMO_BODY_SCALES[bodyType] || MIXAMO_BODY_SCALES.standard
   return (
     <group position={rig.root}>
-      <group ref={modelRoot} scale={scale}>
+      <group ref={modelRoot}>
         <primitive
           object={scene}
           onPointerDown={handleSurfacePointerDown}
@@ -1040,7 +815,6 @@ function SceneObject({ data, selected, selectedId, activeJoint, transformMode, t
           <MinimalPersonModel color={data.color} faceText={data.faceText} selected={selected} />
         ) : (
           <StudioPerson
-            bodyType={data.bodyType}
             pose={data.pose}
             poseTime={data.poseTime}
             continuousMotion={data.continuousMotion}

@@ -126,6 +126,27 @@ test('scene command failures and a missing toolkit become tool errors', async ()
   assert.match(brokenJson.error, /JSON/)
 })
 
+test('delegate_character_pose forwards the brief to the injected rig subagent', async () => {
+  const calls = []
+  const raw = await executeAgentTool({
+    name: 'delegate_character_pose',
+    arguments: '{"target":"actor-lead","brief":"右手挥手","startFrame":10,"endFrame":60}',
+  }, {
+    runRigSubagent: async input => {
+      calls.push(input)
+      return { ok: true, tool: 'delegate_character_pose', message: '已写入 2 个姿态关键帧', frames: [10, 20], bones: ['mixamorigRightArm'] }
+    },
+  })
+  const parsed = parseToolResult(raw)
+  assert.equal(parsed.ok, true)
+  assert.equal(parsed.frames.length, 2)
+  assert.deepEqual(calls, [{ target: 'actor-lead', brief: '右手挥手', startFrame: 10, endFrame: 60, basePose: '' }])
+
+  const missing = parseToolResult(await executeAgentTool({ name: 'delegate_character_pose', arguments: '{}' }, {}))
+  assert.equal(missing.ok, false)
+  assert.match(missing.error, /骨骼动画师不可用/)
+})
+
 test('oversized tool output stays parseable JSON under the transport limit', () => {
   const payload = {
     ok: true,

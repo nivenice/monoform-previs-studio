@@ -47,7 +47,19 @@ test('scene context caps objects, rounds numbers and keeps camera/timeline data'
   assert.equal(context.timeline.totalFrames, 360)
   assert.equal(context.selectedId, 'obj-0')
   assert.ok(context.tools.includes('manage_keyframes'))
+  assert.ok(context.tools.includes('delegate_character_pose'))
   assert.ok(stringifySceneContext({ objects: [] }).includes('"objectCount":0'))
+})
+
+test('scene context normalizes legacy character body types', () => {
+  const context = buildSceneContext({
+    objects: [
+      { id: 'a', name: '女性', type: 'person', bodyType: 'female', position: [0, 0, 0] },
+      { id: 'b', name: '极简', type: 'person', bodyType: 'minimal', position: [0, 0, 0] },
+    ],
+  })
+  assert.equal(context.objects[0].bodyType, 'standard')
+  assert.equal(context.objects[1].bodyType, 'minimal')
 })
 
 test('scene context handles missing or malformed source fields', () => {

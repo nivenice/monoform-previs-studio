@@ -48,6 +48,23 @@ async function startHarness(options: { token?: string } = {}) {
     if (url.endsWith('/models')) return jsonResponse({ data: [{ id: 'stub-model', name: 'Stub' }] })
     if (body?.response_format) return jsonResponse({ choices: [{ message: { content: JSON.stringify(validScene()) } }] })
     if (body?.stream) {
+      const rigTools = Array.isArray(body.tools) && body.tools.some((tool: any) => tool.function?.name === 'write_pose_keyframes')
+      if (rigTools) {
+        const hasToolResult = Array.isArray(body.messages) && body.messages.some((message: any) => message.role === 'tool')
+        if (hasToolResult) {
+          return sseResponse(['data: {"choices":[{"delta":{"content":"挥手已完成。"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'])
+        }
+        const call = {
+          index: 0,
+          id: 'rig_call_1',
+          type: 'function',
+          function: { name: 'write_pose_keyframes', arguments: '{"frames":[]}' },
+        }
+        return sseResponse([
+          `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [call] }, finish_reason: 'tool_calls' }] })}\n\n`,
+          'data: [DONE]\n\n',
+        ])
+      }
       const hasTool = Array.isArray(body.messages) && body.messages.some((message: any) => message.role === 'tool')
       if (hasTool) {
         return sseResponse(['data: {"choices":[{"delta":{"content":"已生成白模。"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'])
@@ -219,11 +236,60 @@ test('conversation endpoints cover create, upload, SSE turn, detail and delete',
   assert.deepEqual(await (await fetch(`${harness.origin}/api/agent/conversations`)).json(), { conversations: [] })
 })
 
+test('the specialist turn endpoint streams rig tool calls without creating a conversation', async t => {
+  const harness = await startHarness()
+  t.after(() => harness.close())
+  await fetch(`${harness.origin}/api/agent/config`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ chat: { provider: 'custom', baseUrl: 'http://127.0.0.1:9999/v1', apiKey: 'secret-key', model: 'stub-chat' } }),
+  })
+
+  const response = await fetch(`${harness.origin}/api/agent/specialist/turn`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      specialist: 'rig',
+      context: '{"target":{"id":"actor-lead"}}',
+      brief: '抬手挥两下',
+      history: [],
+    }),
+  })
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type') || '', /text\/event-stream/)
+  const events = parseSse(await response.text())
+  const message = events.find(event => event.event === 'message')
+  assert.equal(message?.data.message.toolCalls[0].name, 'write_pose_keyframes')
+  assert.equal(events.at(-1)?.event, 'done')
+  assert.deepEqual(await (await fetch(`${harness.origin}/api/agent/conversations`)).json(), { conversations: [] })
+
+  const invalid = await fetch(`${harness.origin}/api/agent/specialist/turn`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ specialist: 'rig', context: '{}' }),
+  })
+  assert.equal(invalid.status, 400)
+  const invalidJson: any = await invalid.json()
+  assert.match(invalidJson.error, /动作说明/)
+
+  const unknown = await fetch(`${harness.origin}/api/agent/specialist/turn`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ specialist: 'camera', context: '{}', brief: 'x' }),
+  })
+  assert.equal(unknown.status, 400)
+})
+
 test('agent routes use the same bearer token gate', async t => {
   const harness = await startHarness({ token: 'secret' })
   t.after(() => harness.close())
   assert.equal((await fetch(`${harness.origin}/api/agent/config`)).status, 401)
   assert.equal((await fetch(`${harness.origin}/api/agent/config`, { headers: headers('wrong') })).status, 401)
+  assert.equal((await fetch(`${harness.origin}/api/agent/specialist/turn`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ specialist: 'rig', context: '{}', brief: '挥手', history: [] }),
+  })).status, 401)
   const allowed = await fetch(`${harness.origin}/api/agent/config`, { headers: headers('secret') })
   assert.equal(allowed.status, 200)
 })

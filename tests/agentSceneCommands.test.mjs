@@ -183,6 +183,43 @@ test('manage_keyframes writes camera framing and object pose tracks in one call'
   assert.ok(Math.abs(mid.rotation[1] - 92 * Math.PI / 180 * ((50 - 36) / 28)) < 0.2)
 })
 
+test('set_pose skips or rejects the static minimal model', () => {
+  const minimal = baseState({ objects: [{ ...person(), id: 'mini', name: '极简', bodyType: 'minimal' }] })
+  assert.throws(() => run(SET_POSE, minimal, { targets: ['mini'], preset: 'idle' }), /极简模型/)
+
+  const mixed = baseState({ objects: [person(), { ...person(), id: 'mini', name: '极简', bodyType: 'minimal' }] })
+  const result = run(SET_POSE, mixed, { targets: ['actor-lead', 'mini'], preset: 'aim_pistol' })
+  assert.equal(result.patch.objects.find(object => object.id === 'actor-lead').pose, 'aim_pistol')
+  assert.equal(result.patch.objects.find(object => object.id === 'mini').pose, 'walk')
+  assert.match(result.summary.skipped.map(item => item.reason).join(), /极简模型/)
+})
+
+test('a new object key inherits the interpolated transform from neighbouring keys', () => {
+  const state = baseState()
+  const written = run(MANAGE_KEYFRAMES, state, {
+    objects: [{
+      target: 'actor-lead',
+      frames: [
+        { frame: 0, pose: 'idle', poseTime: 0.08, yawDegrees: 0 },
+        { frame: 100, pose: 'idle', poseTime: 0.08, yawDegrees: 90 },
+      ],
+    }],
+  })
+  const afterWrite = baseState({
+    settings: state.settings,
+    objectKeyframes: written.patch.objectKeyframes,
+  })
+  const inserted = run(MANAGE_KEYFRAMES, afterWrite, {
+    objects: [{
+      target: 'actor-lead',
+      frames: [{ frame: 50, jointsDegrees: { mixamorigHead: [10, 0, 0] } }],
+    }],
+  })
+  const middle = inserted.patch.objectKeyframes['actor-lead'].find(key => key.frame === 50)
+  assert.ok(Math.abs(middle.rotation[1] - Math.PI / 4) < 1e-6)
+  assert.ok(Math.abs(middle.joints.mixamorigHead[0] - 10 * Math.PI / 180) < 1e-9)
+})
+
 test('manage_keyframes validates frames, deletes and protects route driven tracks', () => {
   const state = baseState({ settings: { name: '测试', fps: 24, durationSeconds: 5, loopPlayback: false } })
   assert.throws(() => run(MANAGE_KEYFRAMES, state, { camera: { frames: [{ frame: 200 }] } }), /超出范围 0–120/)

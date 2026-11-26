@@ -75,8 +75,28 @@ export interface TurnInput {
   sceneContext?: string
 }
 
+export interface SpecialistMessage {
+  role: 'assistant' | 'tool'
+  content: string
+  toolCalls?: AgentToolCall[]
+  toolCallId?: string
+}
+
+export interface SpecialistTurnInput {
+  specialist: 'rig'
+  context: string
+  brief: string
+  history: SpecialistMessage[]
+}
+
 export type AgentEvent =
   | { type: 'conversation'; conversation: Conversation }
+  | { type: 'delta'; text: string }
+  | { type: 'message'; message: AgentMessage }
+  | { type: 'error'; message: string }
+  | { type: 'done' }
+
+export type SpecialistEvent =
   | { type: 'delta'; text: string }
   | { type: 'message'; message: AgentMessage }
   | { type: 'error'; message: string }
@@ -100,6 +120,7 @@ export interface AgentService {
   getAttachment(id: string): { meta: AttachmentMeta; bytes: Uint8Array } | null
   runSceneTool(input: { conversationId: string; attachmentId: string; note?: string }): Promise<GenerateSceneResult>
   turn(input: TurnInput, emit: (event: AgentEvent) => void, signal?: AbortSignal): Promise<void>
+  specialistTurn(input: SpecialistTurnInput, emit: (event: SpecialistEvent) => void, signal?: AbortSignal): Promise<void>
   abort(conversationId: string): void
   close(): void
 }

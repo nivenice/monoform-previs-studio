@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { JOINT_DEFINITIONS, RIG_PRESETS, normalizePoseId, poseCanLoop, presetJoints, presetPhase, presetRoot } from '../src/rig.js'
+import { JOINT_DEFINITIONS, RIG_BONE_PARENTS, RIG_PRESETS, normalizePoseId, poseCanLoop, presetJoints, presetPhase, presetRoot } from '../src/rig.js'
 
 const jointIds = new Set(JOINT_DEFINITIONS.map(joint => joint.id))
 
@@ -34,4 +34,17 @@ test('every preset points at a baked clip or the bind pose', () => {
     assert.ok(preset.clip === null || typeof preset.clip === 'string')
     assert.ok(preset.phase >= 0 && preset.phase <= 1)
   }
+})
+
+test('the bone parent map covers every joint and has a single root', () => {
+  const roots = []
+  for (const id of jointIds) {
+    assert.equal(Object.prototype.hasOwnProperty.call(RIG_BONE_PARENTS, id), true, `${id} must have a parent entry`)
+    const parent = RIG_BONE_PARENTS[id]
+    if (parent === null) roots.push(id)
+    else assert.ok(jointIds.has(parent), `${id} parent ${parent} must be a known joint`)
+  }
+  assert.deepEqual(roots, ['mixamorigHips'])
+  assert.equal(RIG_BONE_PARENTS.mixamorigRightForeArm, 'mixamorigRightArm')
+  assert.equal(RIG_BONE_PARENTS.mixamorigRightHandIndex2, 'mixamorigRightHandIndex1')
 })

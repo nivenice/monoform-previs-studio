@@ -53,6 +53,41 @@ export const JOINT_GROUPS = [...new Set(JOINT_DEFINITIONS.map(joint => joint.gro
   joints: JOINT_DEFINITIONS.filter(joint => joint.group === label),
 }))
 
+// Additive local Euler deltas need the parent chain to be reasoned about: the
+// subagent prompt and rig context quote it, and tests keep it in sync with
+// JOINT_DEFINITIONS. The Mixamo hierarchy is fixed by the baked GLB.
+const FINGER_NAMES = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky']
+const FINGER_PARENT_PAIRS = ['Left', 'Right'].flatMap(side => FINGER_NAMES.flatMap(finger => (
+  Array.from({ length: 4 }, (_, index) => [
+    `${BONE_PREFIX}${side}Hand${finger}${index + 1}`,
+    index === 0 ? `${BONE_PREFIX}${side}Hand` : `${BONE_PREFIX}${side}Hand${finger}${index}`,
+  ])
+)))
+
+export const RIG_BONE_PARENTS = Object.freeze(Object.fromEntries([
+  [`${BONE_PREFIX}Hips`, null],
+  [`${BONE_PREFIX}Spine`, `${BONE_PREFIX}Hips`],
+  [`${BONE_PREFIX}Spine1`, `${BONE_PREFIX}Spine`],
+  [`${BONE_PREFIX}Spine2`, `${BONE_PREFIX}Spine1`],
+  [`${BONE_PREFIX}Neck`, `${BONE_PREFIX}Spine2`],
+  [`${BONE_PREFIX}Head`, `${BONE_PREFIX}Neck`],
+  [`${BONE_PREFIX}HeadTop_End`, `${BONE_PREFIX}Head`],
+  [`${BONE_PREFIX}LeftEye`, `${BONE_PREFIX}Head`],
+  [`${BONE_PREFIX}RightEye`, `${BONE_PREFIX}Head`],
+  ...['Left', 'Right'].flatMap(side => [
+    [`${BONE_PREFIX}${side}Shoulder`, `${BONE_PREFIX}Spine2`],
+    [`${BONE_PREFIX}${side}Arm`, `${BONE_PREFIX}${side}Shoulder`],
+    [`${BONE_PREFIX}${side}ForeArm`, `${BONE_PREFIX}${side}Arm`],
+    [`${BONE_PREFIX}${side}Hand`, `${BONE_PREFIX}${side}ForeArm`],
+    [`${BONE_PREFIX}${side}UpLeg`, `${BONE_PREFIX}Hips`],
+    [`${BONE_PREFIX}${side}Leg`, `${BONE_PREFIX}${side}UpLeg`],
+    [`${BONE_PREFIX}${side}Foot`, `${BONE_PREFIX}${side}Leg`],
+    [`${BONE_PREFIX}${side}ToeBase`, `${BONE_PREFIX}${side}Foot`],
+    [`${BONE_PREFIX}${side}Toe_End`, `${BONE_PREFIX}${side}ToeBase`],
+  ]),
+  ...FINGER_PARENT_PAIRS,
+]))
+
 // These clips are embedded in the official Three.js X-Bot GLB. No hand-authored
 // Euler poses or skeleton retargeting are involved.
 // The squat presets preserve the user's manually authored offsets on top of the

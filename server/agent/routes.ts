@@ -1,7 +1,8 @@
 import type http from 'node:http'
 import { HttpError, errorMessage, isObject, readJsonBody, readRequestBody, truncate } from '../http-body'
-import type { AgentEvent, AgentService, TurnInput, TurnToolResult } from './types'
+import type { AgentEvent, AgentService, SpecialistEvent, TurnInput, TurnToolResult } from './types'
 import { AgentInputError } from './types'
+import { parseSpecialistInput } from './specialist'
 
 const MAX_TURN_BODY = 256 * 1024
 const MAX_CONFIG_BODY = 16 * 1024
@@ -137,6 +138,60 @@ async function handleTurn(
   }
 }
 
+async function handleSpecialistTurn(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  agent: AgentService,
+  cors: Record<string, string>,
+): Promise<void> {
+  const payload = await readJsonBody(req, MAX_TURN_BODY)
+  const input = parseSpecialistInput(payload)
+  res.writeHead(200, {
+    ...cors,
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+  res.flushHeaders?.()
+  res.socket?.setNoDelay(true)
+
+  const controller = new AbortController()
+  let closed = false
+  const close = (): void => {
+    if (closed) return
+    closed = true
+    controller.abort()
+  }
+  const send = (event: SpecialistEvent): void => {
+    if (closed) return
+    try {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+    } catch {
+      close()
+    }
+  }
+  const heartbeat = setInterval(() => {
+    if (closed) return
+    try {
+      res.write(': ping\n\n')
+    } catch {
+      close()
+    }
+  }, 15_000)
+  res.once('close', close)
+  try {
+    await agent.specialistTurn(input, send, controller.signal)
+  } catch (error) {
+    if (!closed) send({ type: 'error', message: truncate(errorMessage(error), 2_000) })
+  } finally {
+    clearInterval(heartbeat)
+    res.off('close', close)
+    try { res.end() } catch { /* the client may already be gone */ }
+    closed = true
+  }
+}
+
 async function handleAttachmentUpload(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -260,6 +315,11 @@ export async function handleAgentRequest(
     if (action === 'turn' && segments.length === 3) {
       if (req.method !== 'POST') throw new HttpError(405, '方法不被支持')
       await handleTurn(req, res, agent, cors)
+      return
+    }
+    if (action === 'specialist' && id === 'turn' && segments.length === 4) {
+      if (req.method !== 'POST') throw new HttpError(405, '方法不被支持')
+      await handleSpecialistTurn(req, res, agent, cors)
       return
     }
     if (action === 'scene-to-white-model' && segments.length === 3) {

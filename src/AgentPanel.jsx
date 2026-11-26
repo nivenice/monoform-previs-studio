@@ -4,12 +4,13 @@ import {
 } from 'lucide-react'
 import {
   createAgentConversation, deleteAgentConversation, getAgentConfig, getAgentConversation,
-  listAgentConversations, openAgentTurn, runSceneTool, uploadAgentAttachment,
+  listAgentConversations, openAgentTurn, requestRigSpecialistTurn, runSceneTool, uploadAgentAttachment,
 } from './agentApi.js'
 import { humanAiError } from './apiClient.js'
 import { AgentConfigDialog } from './AgentConfigDialog.jsx'
 import { stringifySceneContext } from './agentContext.js'
 import { AGENT_TOOL_DEFINITIONS, executeAgentTool, parseToolResult } from './agentTools.js'
+import { runRigSubagent } from './rigSubagent.js'
 
 const MAX_FILES = 4
 const MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -86,7 +87,7 @@ function ToolCard({ call }) {
           {status === 'running' ? '执行中' : status === 'ok' ? '完成' : status === 'error' ? '失败' : '未完成'}
         </span>
       </div>
-      {status === 'running' && <small>{definition?.runningText || '正在执行…'}</small>}
+      {status === 'running' && <small>{definition?.runningText || '正在执行…'}{call.subagent?.round ? ` · 第 ${call.subagent.round} 轮` : ''}</small>}
       {result?.ok && (
         <small>
           {result.message || (Array.isArray(result.updated) ? `已调整 ${result.updated.length} 个对象` : '已完成')}
@@ -95,6 +96,17 @@ function ToolCard({ call }) {
       )}
       {result?.ok && warnings.length > 0 && <small className="agent-tool-note">{warnings.slice(0, 3).join('；')}</small>}
       {result && !result.ok && <small className="is-error">{result.error || '执行失败'}</small>}
+      {call.subagent?.steps?.length > 0 && (
+        <div className="agent-sub-steps">
+          {call.subagent.steps.slice(-6).map((step, index) => (
+            <div key={`${step.label}-${index}`} className={`agent-sub-step is-${step.status || 'running'}`}>
+              <span>{step.label}</span>
+              {step.message && <small>{step.message}</small>}
+            </div>
+          ))}
+          {call.subagent.steps.length > 6 && <small className="agent-sub-more">+{call.subagent.steps.length - 6} 步</small>}
+        </div>
+      )}
       {!result && status === 'pending' && <small>上一次工具调用未完成；可以重新发送消息。</small>}
     </div>
   )
@@ -334,6 +346,44 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
       const results = []
       for (const call of finalMessage.toolCalls) {
         if (signal.aborted) throw abortError()
+        const updateSubagent = progressEvent => {
+          setMessages(current => current.map(item => item.id === currentId ? {
+            ...item,
+            toolCalls: (item.toolCalls || []).map(toolCall => {
+              if (toolCall.id !== call.id) return toolCall
+              const subagent = toolCall.subagent || { status: 'running', round: 0, steps: [] }
+              if (progressEvent.type === 'round') {
+                return { ...toolCall, subagent: { ...subagent, status: 'running', round: progressEvent.round } }
+              }
+              if (progressEvent.type === 'tool-start') {
+                return {
+                  ...toolCall,
+                  subagent: {
+                    ...subagent,
+                    status: 'running',
+                    steps: [...(subagent.steps || []), { label: progressEvent.label, status: 'running' }],
+                  },
+                }
+              }
+              if (progressEvent.type === 'tool-result') {
+                const steps = [...(subagent.steps || [])]
+                let index = -1
+                for (let cursor = steps.length - 1; cursor >= 0; cursor -= 1) {
+                  if (steps[cursor].label === progressEvent.label) { index = cursor; break }
+                }
+                if (index >= 0) {
+                  steps[index] = {
+                    ...steps[index],
+                    status: progressEvent.ok ? 'ok' : 'error',
+                    message: progressEvent.message || '',
+                  }
+                }
+                return { ...toolCall, subagent: { ...subagent, steps } }
+              }
+              return toolCall
+            }),
+          } : item))
+        }
         const raw = await executeAgentTool(call, {
           conversationId: activeId,
           attachments: uploaded,
@@ -341,6 +391,13 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
           applyScene: onApplyScene,
           sceneToolkit,
           signal,
+          runRigSubagent: input => runRigSubagent({
+            ...input,
+            toolkit: sceneToolkit,
+            requestTurn: requestRigSpecialistTurn,
+            signal,
+            onProgress: updateSubagent,
+          }),
         })
         const parsed = parseToolResult(raw)
         setMessages(current => current.map(item => item.id === currentId ? {
@@ -349,6 +406,7 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
             ...toolCall,
             status: parsed.ok ? 'ok' : 'error',
             result: parsed,
+            ...(toolCall.subagent ? { subagent: { ...toolCall.subagent, status: parsed.ok ? 'ok' : 'error' } } : {}),
           } : toolCall),
         } : item))
         if (signal.aborted) throw abortError()
@@ -557,7 +615,7 @@ export const AgentPanel = memo(function AgentPanel({ getSceneContext, onApplySce
             <strong>AI 助手</strong>
             {config?.chat?.configured ? (
               <>
-                <p>可以直接改场景：读场景、调人物姿势与物体变换、写镜头和对象关键帧。也可以上传场景图转成白模。</p>
+                <p>可以直接改场景：读场景、调人物姿势与物体变换、写镜头和对象关键帧；标准人物的精细骨骼表演会交给「骨骼动画师」子代理。也可以上传场景图转成白模。</p>
                 <div className="agent-suggestions">
                   <button type="button" onClick={() => { setDraft('场景内包含一个人物模型，镜头在她的侧方，他突然转身举枪对着镜头'); textareaRef.current?.focus() }}>做一个 5 秒 007 式开场镜头</button>
                   <button type="button" onClick={() => { setDraft('当前场景里有哪些对象？'); textareaRef.current?.focus() }}>当前场景里有哪些对象？</button>

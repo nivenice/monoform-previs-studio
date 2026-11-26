@@ -99,10 +99,6 @@ button:disabled { opacity: .28; cursor: not-allowed !important; }
 .asset-card { width: 100%; height: 62px; display: grid; grid-template-columns: 51px 1fr 18px; align-items: center; gap: 8px; padding: 5px; margin-bottom: 6px; border: 1px solid var(--line-soft); border-radius: 7px; background: #292926; text-align: left; cursor: pointer; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
 .asset-card:hover { border-color: #5a5342; background: #302f2b; transform: translateY(-1px); }
 .asset-preview { height: 50px; display: grid; place-items: center; color: #d7d2c7; background: #3a3a36; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.025); }
-.person-preview.tall svg { transform: scaleX(.78) scaleY(1.1); }
-.person-preview.broad svg { transform: scaleX(1.25) scaleY(.94); }
-.person-preview.female svg { transform: scaleX(.86) scaleY(1.02); }
-.person-preview.male svg { transform: scaleX(1.12) scaleY(1.04); }
 .asset-copy { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .asset-copy strong { font-size: 11px; font-weight: 580; }
 .asset-copy small { color: var(--text-faint); font-size: 9px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -603,6 +599,14 @@ button:disabled { opacity: .28; cursor: not-allowed !important; }
 .agent-tool-card small { color: var(--text-faint); font-size: 9px; line-height: 1.45; }
 .agent-tool-card small.is-error { color: #e0a393; }
 .agent-tool-card small.agent-tool-note { color: #b49b6c; font-size: 8.5px; }
+.agent-sub-steps { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; padding-top: 4px; border-top: 1px dashed #3b3a34; }
+.agent-sub-step { display: flex; align-items: baseline; gap: 5px; color: var(--text-faint); font-size: 8.5px; line-height: 1.45; }
+.agent-sub-step::before { content: '·'; color: #6e6757; }
+.agent-sub-step.is-running::before { content: '…'; color: var(--accent); }
+.agent-sub-step.is-ok::before { content: '✓'; color: var(--live); }
+.agent-sub-step.is-error::before { content: '!'; color: #d99d8d; }
+.agent-sub-step small { color: inherit; font-size: 8px; }
+.agent-sub-more { color: var(--text-faint); font-size: 8px; }
 .agent-message-note { color: var(--text-faint); font-size: 8.5px; }
 .agent-message-note.is-error { color: #d99d8d; }
 .agent-cursor { display: inline-block; width: 5px; height: 12px; margin-left: 2px; vertical-align: -2px; background: var(--accent); animation: agentBlink 1s steps(2) infinite; }

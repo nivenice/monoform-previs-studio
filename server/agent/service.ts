@@ -1,8 +1,11 @@
+import { randomUUID } from 'node:crypto'
 import type { GenerateSceneResult, RawModelConfig } from '../types'
 import type { ModelConfigStore } from '../config'
 import { fetchRemoteModels } from '../upstream'
 import { AgentStore } from './store'
 import { buildSystemPrompt, describeAttachmentNote } from './prompt'
+import { buildRigSystemPrompt, RIG_AGENT_TOOLS } from './rigPrompt'
+import { MAX_RIG_TOOL_ROUNDS, specialistHistoryMessages } from './specialist'
 import { streamChatCompletion } from './upstream'
 import type {
   AgentEvent,
@@ -13,6 +16,8 @@ import type {
   ConversationDetail,
   ConversationSummary,
   PublicAgentConfig,
+  SpecialistEvent,
+  SpecialistTurnInput,
   TurnInput,
   TurnToolResult,
 } from './types'
@@ -418,6 +423,59 @@ export function createAgentService(options: CreateAgentServiceOptions): AgentSer
     }
   }
 
+  const specialistTurn = async (
+    input: SpecialistTurnInput,
+    emit: (event: SpecialistEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const chat = chatRawConfig(options.configStore)
+    if (!chat) throw new AgentInputError('请先配置对话模型（API 地址、密钥和模型）')
+    const toolRounds = input.history.filter(message => message.role === 'assistant' && Boolean(message.toolCalls?.length)).length
+    if (toolRounds >= MAX_RIG_TOOL_ROUNDS) {
+      throw new AgentInputError('骨骼动画师工具调用次数过多；请重新发送消息')
+    }
+    const controller = new AbortController()
+    const onAbort = (): void => controller.abort()
+    if (signal) {
+      if (signal.aborted) controller.abort()
+      else signal.addEventListener('abort', onAbort, { once: true })
+    }
+    try {
+      const messages = [
+        { role: 'system', content: buildRigSystemPrompt(input.context) },
+        { role: 'user', content: input.brief },
+        ...specialistHistoryMessages(input.history),
+      ]
+      const result = await streamChatCompletion(
+        chat,
+        messages,
+        {
+          fetchImpl: options.fetchImpl,
+          sleep: options.sleep,
+          signal: controller.signal,
+          tools: RIG_AGENT_TOOLS,
+          temperature: 0.2,
+        },
+        delta => {
+          if (controller.signal.aborted) return
+          emit({ type: 'delta', text: delta })
+        },
+      )
+      if (controller.signal.aborted) return
+      const message: AgentMessage = {
+        id: randomUUID(),
+        role: 'assistant',
+        content: result.content,
+        toolCalls: result.toolCalls,
+        createdAt: Date.now(),
+      }
+      emit({ type: 'message', message })
+      emit({ type: 'done' })
+    } finally {
+      signal?.removeEventListener('abort', onAbort)
+    }
+  }
+
   const abort = (conversationId: string): void => {
     active.get(conversationId)?.abort()
   }
@@ -441,6 +499,7 @@ export function createAgentService(options: CreateAgentServiceOptions): AgentSer
     getAttachment,
     runSceneTool,
     turn,
+    specialistTurn,
     abort,
     close,
   }

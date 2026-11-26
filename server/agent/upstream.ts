@@ -8,6 +8,8 @@ export interface StreamChatOptions {
   fetchImpl?: typeof fetch
   sleep?: (ms: number) => Promise<void>
   signal?: AbortSignal
+  tools?: unknown
+  temperature?: number
 }
 
 export interface StreamChatResult {
@@ -204,10 +206,10 @@ export async function streamChatCompletion(
   const payload = {
     model,
     messages,
-    tools: AGENT_TOOLS,
+    tools: options.tools ?? AGENT_TOOLS,
     tool_choice: 'auto',
     stream: true,
-    temperature: 0.3,
+    temperature: options.temperature ?? 0.3,
   }
   let lastError: Error | null = null
   for (let attempt = 0; attempt < 3; attempt += 1) {

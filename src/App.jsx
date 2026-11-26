@@ -14,6 +14,7 @@ import { CAMERA_SHOT_PRESETS, shotPreset, solveFollowCamera } from './cameraMoti
 import { ShotsPanel } from './ShotsPanel.jsx'
 import { mergeRouteKeyframes, removeRouteOwnedKeyframes, routeOwnedKeyframe } from './routeOwnership.js'
 import { JOINT_DEFINITIONS, JOINT_GROUPS, RIG_PRESET_GROUPS, RIG_PRESET_OPTIONS, cloneJointPose, normalizePoseId, poseCanLoop, poseForObject, presetJoints, presetPhase, presetRoot } from './rig.js'
+import { PERSON_BODY_TYPES, normalizeBodyType } from './personBodyType.js'
 import { normalizeFaceText } from './minimalPerson.js'
 import { cameraKeyframeFromCamera, clampKeyframeFrames, keyframeMaxFrame, normalizeFrameNumber, normalizeInterpolation, objectAtFrame, objectKeyframeFromObject, objectsAtFrame, resolveCameraAtFrame, rotateVectorXYZ, uniqueSortedKeyframes } from './keyframeOps.js'
 import { axisValueDigits, formatAxisValue, mergeCameraAxisLocks, normalizeAxisLocks, parseAxisValue, resetVectorPreservingLocks, stepAxisValue, toggleAxisLock } from './transformValues.js'
@@ -44,14 +45,6 @@ const DEFAULT_LIGHTING = {
 }
 const FPS_OPTIONS = [24, 25, 30]
 const FOCAL_LENGTH_PRESETS = [18, 24, 35, 50, 85, 120]
-const PERSON_BODY_TYPES = [
-  ['standard', '中性人体'],
-  ['female', '女性人体'],
-  ['male', '男性人体'],
-  ['tall', '修长人体'],
-  ['broad', '宽体人体'],
-  ['minimal', '极简模型'],
-]
 const BRAND_MARK_URL = `${import.meta.env.BASE_URL}branding/monoform-mark.png`
 // Electron hides the native title bar on Windows/Linux and overlays the native
 // caption buttons on the right edge; leave room for them and make the topbar draggable.
@@ -280,6 +273,7 @@ function normalizePerson(object) {
   const pose = normalizePoseId(object.pose)
   return {
     ...object,
+    bodyType: normalizeBodyType(object.bodyType),
     pose,
     poseTime: Number.isFinite(object.poseTime) ? object.poseTime : presetPhase(pose),
     rigRoot: Array.isArray(object.rigRoot) ? object.rigRoot.slice(0, 3).map(value => Number(value) || 0) : [0, 0, 0],
@@ -546,10 +540,9 @@ function visualCenterForObject(object) {
   if (!object) return [0, 0, 0]
   const position = object.position || [0, 0, 0]
   if (object.type !== 'person') return [...position]
-  const bodyHeight = { tall: 1.12, broad: 1.04, female: 0.98, male: 1.06 }[object.bodyType] || 1
   const root = object.rigRoot || [0, 0, 0]
   const scale = object.scale || [1, 1, 1]
-  const localCenter = [root[0] * scale[0], (root[1] + bodyHeight) * scale[1], root[2] * scale[2]]
+  const localCenter = [root[0] * scale[0], (root[1] + 1) * scale[1], root[2] * scale[2]]
   const offset = rotateVectorXYZ(localCenter, object.rotation)
   return position.map((value, index) => value + offset[index])
 }
@@ -760,12 +753,8 @@ function LeftSidebar({ objects, selectedId, onSelect, onAddPerson, onAddPrimitiv
       {tab === 'assets' ? (
         <div className="assets-scroll">
           <div className="section-kicker">人物体型</div>
-          <AssetCard icon={UserRound} title="标准人物" subtitle="中性比例 · 可换动作" onClick={() => onAddPerson('standard')} previewClass="person-preview" />
-          <AssetCard icon={UserRound} title="女性人体" subtitle="窄肩宽髋 · 真人比例" onClick={() => onAddPerson('female')} previewClass="person-preview female" />
-          <AssetCard icon={UserRound} title="男性人体" subtitle="宽肩躯干 · 真人比例" onClick={() => onAddPerson('male')} previewClass="person-preview male" />
-          <AssetCard icon={UserRound} title="修长人物" subtitle="高挑比例 · 适合走位" onClick={() => onAddPerson('tall')} previewClass="person-preview tall" />
-          <AssetCard icon={UserRound} title="宽体人物" subtitle="厚重比例 · 强轮廓" onClick={() => onAddPerson('broad')} previewClass="person-preview broad" />
-          <AssetCard icon={ScanFace} title="极简模型" subtitle="圆柱+圆头 · 可写文字" onClick={() => onAddPerson('minimal')} />
+          <AssetCard icon={UserRound} title="标准人物" subtitle="标准骨骼 · 可做精细动作" onClick={() => onAddPerson('standard')} previewClass="person-preview" />
+          <AssetCard icon={ScanFace} title="极简模型" subtitle="圆柱+圆头 · 静态占位" onClick={() => onAddPerson('minimal')} />
           <div className="section-kicker section-gap">基础物体</div>
           <div className="primitive-grid">
             <button onClick={() => onAddPrimitive('box')}><Box size={24} /><span>方块</span></button>
@@ -907,7 +896,7 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
           <InspectorSection title="人物" collapsed={Boolean(collapsedSections.person)} onToggle={() => toggleSection('person')}>
             <label className="select-field"><span>体型</span><select value={selected.bodyType} onChange={e => onUpdateObject({ bodyType: e.target.value })}>{PERSON_BODY_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="text-field"><span>面部文字</span><input aria-label="极简模型面部文字" maxLength={5} placeholder="1-5 个字，可留空" value={selected.faceText || ''} onChange={event => onUpdateObject({ faceText: normalizeFaceText(event.target.value) })} /><output>{Array.from(selected.faceText || '').length}/5</output></label>
-            <p className="pose-source-note">极简模型为静态占位：不参与动作、骨骼与表情，用于构图、朝向和面部文字标注。切回其他体型后会恢复原有动作设置。</p>
+            <p className="pose-source-note">极简模型为静态占位：不参与动作、骨骼与表情，用于构图、朝向和面部文字标注。切回标准人物后会恢复原有动作设置。</p>
             <label className="color-field person-color-field"><span>人物颜色</span><input type="color" value={selected.color || '#e8e3d8'} onChange={e => onUpdateObject({ color: e.target.value })} /><output>{selected.color || '#e8e3d8'}</output></label>
           </InspectorSection>
         ) : selected.type === 'person' ? (
@@ -919,7 +908,7 @@ function Inspector({ selected, camera, objects = [], selectedJoint, customPoses,
               <input type="checkbox" checked={canLoopPose && Boolean(selected.continuousMotion)} disabled={!canLoopPose} onChange={event => onUpdateObject({ continuousMotion: event.target.checked })} />
               <span><strong>随时间轴循环动作</strong><small>{canLoopPose ? '播放、拖帧和导出时持续循环' : '当前预设是固定姿势，不支持循环'}</small></span>
             </label>
-            <p className="pose-source-note">角色状态关键帧会记录动作、相位、循环开关和完整骨骼，并在对应帧切换。动作来源：Three.js X-Bot 与 CC0 日常动作；当前模型没有面部表情，需要角色标识时可用「极简模型」的面部文字。</p>
+            <p className="pose-source-note">角色状态关键帧会记录动作、相位、循环开关和完整骨骼，并在对应帧切换。动作来源：Three.js X-Bot 与 CC0 日常动作；预设之外的精细动作可以交给 AI 助手里的「骨骼动画师」。当前模型没有面部表情，需要角色标识时可用「极简模型」的面部文字。</p>
             <div className="pose-library">
               <div className="pose-library-head"><span>动作库</span><small>{RIG_PRESET_OPTIONS.length} PRESETS</small></div>
               {RIG_PRESET_GROUPS.map(group => (

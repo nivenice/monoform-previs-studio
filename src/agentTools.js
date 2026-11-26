@@ -13,6 +13,7 @@ import {
 } from './agentSceneCommands.js'
 
 export const SCENE_TOOL_NAME = 'scene_to_white_model'
+export const DELEGATE_POSE = 'delegate_character_pose'
 
 export const AGENT_TOOL_DEFINITIONS = [
   {
@@ -38,6 +39,12 @@ export const AGENT_TOOL_DEFINITIONS = [
     label: '调整人物姿势',
     description: '切换人物的动作预设（含举枪瞄准），并可按骨骼微调角度。',
     runningText: '正在调整人物姿势…',
+  },
+  {
+    name: DELEGATE_POSE,
+    label: '骨骼动画师',
+    description: '把标准人物的精细骨骼表演交给子代理，它按帧写各关节旋转。',
+    runningText: '骨骼动画师正在按帧调整关节旋转…',
   },
   {
     name: MANAGE_KEYFRAMES,
@@ -198,6 +205,23 @@ export async function executeAgentTool(call, context = {}) {
       return serializeToolOutput({ ok: true, tool: name, ...summary })
     } catch (error) {
       return toolResult(false, name, String(error?.message || error || '场景转白模失败').slice(0, 1000))
+    }
+  }
+  if (name === DELEGATE_POSE) {
+    if (typeof context.runRigSubagent !== 'function') {
+      return toolResult(false, name, '骨骼动画师不可用：没有连接当前工程状态')
+    }
+    try {
+      const result = await context.runRigSubagent({
+        target: args.target,
+        brief: args.brief,
+        startFrame: args.startFrame,
+        endFrame: args.endFrame,
+        basePose: args.basePose || '',
+      })
+      return serializeToolOutput(result)
+    } catch (error) {
+      return toolResult(false, name, String(error?.message || error || '骨骼动画师执行失败').slice(0, 1000))
     }
   }
   if (SCENE_COMMANDS.includes(name)) return executeSceneCommand(name, args, context)

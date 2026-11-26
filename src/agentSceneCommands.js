@@ -5,6 +5,7 @@
 // undo and autosave keep a single source of truth. Nothing here touches React,
 // which keeps every rule unit-testable.
 import { RIG_PRESETS, RIG_PRESET_OPTIONS, JOINT_DEFINITIONS, cloneJointPose, normalizePoseId, poseCanLoop, presetJoints, presetPhase, presetRoot } from './rig.js'
+import { normalizeBodyType } from './personBodyType.js'
 import { rotationToward, solveSubjectCamera } from './cameraMotion.js'
 import { cameraKeyframeFromCamera, keyframeMaxFrame, normalizeInterpolation, objectAtFrame, objectKeyframeFromObject, uniqueSortedKeyframes } from './keyframeOps.js'
 
@@ -63,7 +64,7 @@ const vectorFrom = (value, fallback) => {
 const hasValue = value => value !== undefined && value !== null && value !== ''
 
 // Models sometimes emit snake_case even when the schema is camelCase.
-function camelizeKeys(value, depth = 0) {
+export function camelizeKeys(value, depth = 0) {
   if (depth > 6 || value === null || typeof value !== 'object') return value
   if (Array.isArray(value)) return value.map(item => camelizeKeys(item, depth + 1))
   const result = {}
@@ -84,7 +85,7 @@ function timelineOf(state) {
   return { fps, durationSeconds, totalFrames: fps * durationSeconds }
 }
 
-function resolveObjects(state, targets, { personsOnly = false, allowAll = true } = {}) {
+export function resolveObjects(state, targets, { personsOnly = false, allowAll = true } = {}) {
   const objects = Array.isArray(state.objects) ? state.objects : []
   if (!hasValue(targets)) throw new SceneCommandError('请指定目标对象：对象 id 数组、\"selected\"（当前选中）、\"persons\"（全部人物）或 \"all\"（全部对象）')
   const normalized = Array.isArray(targets) ? targets.map(item => String(item)) : [String(targets)]
@@ -200,7 +201,9 @@ export function describeSceneInfo(state, rawArgs = {}) {
       keyframeFrames: track.map(key => Number(key.frame)).sort((a, b) => a - b),
     }
     if (object.type === 'person') {
-      entry.bodyType = object.bodyType || 'standard'
+      const bodyType = normalizeBodyType(object.bodyType)
+      entry.bodyType = bodyType
+      entry.rigged = bodyType === 'standard'
       entry.pose = normalizePoseId(object.pose)
       entry.poseLabel = poseLabel(object.pose)
       entry.poseTime = Number.isFinite(object.poseTime) ? round(object.poseTime, 2) : presetPhase(object.pose)
@@ -397,14 +400,18 @@ export function transformObjects(state, rawArgs = {}) {
 
 export function setPose(state, rawArgs = {}) {
   const args = camelizeKeys(rawArgs || {})
-  const targets = resolveObjects(state, args.targets ?? args.target, { personsOnly: true })
+  const resolvedTargets = resolveObjects(state, args.targets ?? args.target, { personsOnly: true })
+  const targets = resolvedTargets.filter(object => normalizeBodyType(object.bodyType) === 'standard')
+  const skipped = resolvedTargets
+    .filter(object => normalizeBodyType(object.bodyType) !== 'standard')
+    .map(object => ({ id: object.id, name: object.name || object.id, reason: '极简模型是静态占位，不支持动作与骨骼' }))
+  if (!targets.length) throw new SceneCommandError('极简模型是静态占位，不支持动作与骨骼；需要动作请改用标准人物')
   const source = hasValue(args.preset) || hasValue(args.customPose)
     ? resolvePose(state, args.preset ?? args.customPose)
     : null
   const resetJoints = args.resetJoints !== false || Boolean(source)
   const updated = []
   const warnings = []
-  const skipped = []
 
   const nextObjects = state.objects.map(object => {
     if (!targets.includes(object)) return object
@@ -516,9 +523,13 @@ function composeCameraEntry(state, entry, totalFrames, index, existing) {
   return key
 }
 
-function composeObjectEntry(state, object, entry, totalFrames, index, existing) {
+function composeObjectEntry(state, object, entry, totalFrames, index, existing, trackKeys = [], fps = 24) {
   const frame = parseFrame(entry.frame, totalFrames, `“${object.name || object.id}”第 ${index + 1} 个关键帧`)
-  const base = existing || objectKeyframeFromObject(object, frame)
+  // A new in-between key must inherit the animated transform/pose of its
+  // neighbours, not the object's base state, or a turn written by the main
+  // agent snaps back while a subagent inserts joint keys.
+  const baseObject = existing ? null : objectAtFrame(object, trackKeys, frame, fps)
+  const base = existing || objectKeyframeFromObject(baseObject || object, frame)
   const next = { ...base, frame, source: 'manual' }
   if (hasValue(entry.position)) next.position = vectorFrom(entry.position, base.position).map(value => clamp(value, -POSITION_LIMIT, POSITION_LIMIT))
   if (hasValue(entry.rotationDegrees) || hasValue(entry.yawDegrees)) {
@@ -566,7 +577,7 @@ function upsertKey(list, key) {
 
 export function manageKeyframes(state, rawArgs = {}) {
   const args = camelizeKeys(rawArgs || {})
-  const { totalFrames } = timelineOf(state)
+  const { fps, totalFrames } = timelineOf(state)
   const action = String(args.action || 'upsert').toLowerCase()
   if (!['upsert', 'delete', 'clear', 'list'].includes(action)) {
     throw new SceneCommandError(`未知操作“${args.action}”；可用 upsert / delete / clear / list`)
@@ -683,7 +694,7 @@ export function manageKeyframes(state, rawArgs = {}) {
         const entry = track.frames[index] || {}
         const frame = parseFrame(entry.frame, totalFrames, `“${object.name || object.id}”第 ${index + 1} 个关键帧`)
         const existing = trackKeys.find(key => Number(key.frame) === frame)
-        const key = composeObjectEntry(state, object, entry, totalFrames, index, existing)
+        const key = composeObjectEntry(state, object, entry, totalFrames, index, existing, trackKeys, fps)
         const merged = upsertKey(trackKeys, key)
         trackKeys.length = 0
         trackKeys.push(...merged)

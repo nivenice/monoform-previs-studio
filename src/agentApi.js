@@ -126,3 +126,39 @@ export async function openAgentTurn({ conversationId, text, attachmentIds, toolR
     if (payload && typeof payload === 'object') onEvent(payload)
   }, signal)
 }
+
+export async function requestRigSpecialistTurn({ context, brief, history, signal }) {
+  const response = await api.fetch('/api/agent/specialist/turn', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      specialist: 'rig',
+      context: String(context || ''),
+      brief: String(brief || ''),
+      history: Array.isArray(history) ? history : [],
+    }),
+    signal,
+  })
+  if (!response.ok) {
+    await readJsonResponse(response, '骨骼动画师请求失败')
+    throw new Error('骨骼动画师请求失败')
+  }
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('text/event-stream')) {
+    const data = await readJsonResponse(response, '骨骼动画师返回了无效响应')
+    throw new Error(data?.error || '骨骼动画师返回了非流式响应')
+  }
+  let message = null
+  let error = ''
+  await readSseStream(response, event => {
+    if (!event.data) return
+    let payload = null
+    try { payload = JSON.parse(event.data) } catch { return }
+    if (!payload || typeof payload !== 'object') return
+    if (payload.type === 'message') message = payload.message
+    if (payload.type === 'error') error = String(payload.message || '骨骼动画师请求失败')
+  }, signal)
+  if (error) throw new Error(error)
+  if (!message) throw new Error('骨骼动画师没有返回回复')
+  return message
+}
